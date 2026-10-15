@@ -1,0 +1,4 @@
+# keep LF in the repo so files used inside Linux containers work on any OS
+* text=auto eol=lf
+*.ico binary
+*.pdf binary
