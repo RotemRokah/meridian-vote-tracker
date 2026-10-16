@@ -125,6 +125,7 @@ public class AuditEvent
     public string? NewValue { get; set; }
     public long? ImportId { get; set; }
     public long? ConflictId { get; set; }
+    public long? SnapshotId { get; set; }          // publish / unpublish events
     public string Actor { get; set; } = "";
     public DateTime At { get; set; }
     public string? CorrelationId { get; set; }

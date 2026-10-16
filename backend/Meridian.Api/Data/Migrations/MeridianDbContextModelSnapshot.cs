@@ -69,6 +69,10 @@ namespace Meridian.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("old_value");
 
+                    b.Property<long?>("SnapshotId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("snapshot_id");
+
                     b.Property<long?>("VoteId")
                         .HasColumnType("bigint")
                         .HasColumnName("vote_id");
@@ -84,6 +88,9 @@ namespace Meridian.Api.Data.Migrations
 
                     b.HasIndex("ImportId")
                         .HasDatabaseName("ix_audit_events_import_id");
+
+                    b.HasIndex("SnapshotId")
+                        .HasDatabaseName("ix_audit_events_snapshot_id");
 
                     b.HasIndex("VoteId", "At")
                         .HasDatabaseName("ix_audit_events_vote_id_at");
@@ -750,6 +757,12 @@ namespace Meridian.Api.Data.Migrations
                         .HasForeignKey("ImportId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_audit_events_imports_import_id");
+
+                    b.HasOne("Meridian.Api.Data.Snapshot", null)
+                        .WithMany()
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_audit_events_snapshots_snapshot_id");
 
                     b.HasOne("Meridian.Api.Data.Vote", null)
                         .WithMany()

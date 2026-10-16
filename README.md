@@ -38,6 +38,18 @@ curl -H "X-User-Id: dana" -H "Content-Type: application/json" -d '{"decision":"A
 
 A second decision on the same conflict gets `409` with who decided, when, and the current state.
 
+## Snapshots
+
+Every selected vote needs a position (Admin: `PUT /api/votes/{id}/position`). Then:
+
+```bash
+curl -H "X-User-Id: dana" -H "Content-Type: application/json" -d '{"name":"Q1 2024","from":"2024-01-01","to":"2024-03-31"}' http://localhost:4200/api/snapshots
+```
+
+Returns `202`; the score is computed in the background. Read it at `GET /api/snapshots/{id}`, one country's breakdown at
+`/api/snapshots/{id}/countries/BRA`, and the exact frozen inputs at `/api/snapshots/{id}/inputs`. Publish (Admin):
+`POST /api/snapshots/{id}/publish`. Score = 100 × matched weight / counted weight; only Y and N count.
+
 ## Run tests
 
 Docker must be running: integration tests start their own PostgreSQL 16 (Testcontainers).

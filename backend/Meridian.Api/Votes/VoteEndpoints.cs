@@ -175,7 +175,7 @@ public static class VoteEndpoints
         var ballots = await db.CountryVotes.AsNoTracking().Where(cv => cv.VoteId == id)
             .OrderBy(cv => cv.CountryCode).ToListAsync(ct);
         var sources = await Sources(db, ballots.Select(b => b.SourceImportId).Append(vote.SourceImportId), ct);
-        var names = await CountryNames(db, ct);
+        var names = await CountryNames.LoadAsync(db, ct);
 
         var position = await db.VotePositions.AsNoTracking().Where(p => p.VoteId == id)
             .Select(p => new PositionDto(p.Stance, p.Weight, p.UpdatedBy, p.UpdatedAt, p.Version))
@@ -265,11 +265,6 @@ public static class VoteEndpoints
 
     private static ValueSourceDto ToSource(Import i) => new(i.Id, i.FileName, i.UploadedBy, i.UploadedAt);
 
-    // current name per code: the latest membership period's name
-    private static async Task<Dictionary<string, string>> CountryNames(MeridianDbContext db, CancellationToken ct) =>
-        (await db.MemberStates.AsNoTracking().ToListAsync(ct))
-            .GroupBy(m => m.CountryCode)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.MemberFrom).First().CountryName);
 
     private static IResult NotFound() =>
         Results.Problem(title: "Vote not found", statusCode: StatusCodes.Status404NotFound);

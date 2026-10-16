@@ -116,6 +116,7 @@ public class MeridianDbContext : DbContext
             e.HasOne<Import>().WithMany().HasForeignKey(x => x.ImportId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Conflict>().WithMany().HasForeignKey(x => x.ConflictId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.Actor).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Snapshot>().WithMany().HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Restrict);
             // vote timeline (HIS-04) reads events of one vote in time order
             e.HasIndex(x => new { x.VoteId, x.At });
         });

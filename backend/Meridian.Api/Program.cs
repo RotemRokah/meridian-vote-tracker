@@ -5,6 +5,7 @@ using Meridian.Api.Endpoints;
 using System.Text.Json.Serialization;
 using Meridian.Api.Imports;
 using Meridian.Api.Infrastructure;
+using Meridian.Api.Snapshots;
 using Meridian.Api.Storage;
 using Meridian.Api.Votes;
 using Microsoft.AspNetCore.Authentication;
@@ -36,6 +37,10 @@ builder.Services.AddAuthorization(Policies.Add);
 builder.Services.AddSingleton<IFileStore, LocalFileStore>();
 builder.Services.AddScoped<ImportProcessor>();
 builder.Services.AddHostedService<ImportWorker>();
+
+// Snapshots: computed in the background (SNP-02)
+builder.Services.AddScoped<SnapshotCalculator>();
+builder.Services.AddHostedService<SnapshotWorker>();
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = ImportEndpoints.MaxUploadBytes);
 builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = ImportEndpoints.MaxUploadBytes);
 
@@ -101,6 +106,7 @@ api.MapSystemEndpoints();
 api.MapImportEndpoints();
 api.MapConflictEndpoints();
 api.MapVoteEndpoints();
+api.MapSnapshotEndpoints();
 
 app.Run();
 
