@@ -7,7 +7,11 @@ public record VoteListItemDto(
     long Id, string AssemblyVoteId, int Session, DateOnly VoteDate, string Title,
     int BallotCount, int PendingConflicts, Stance? Stance, int? Weight);
 
-public record PositionDto(Stance Stance, int Weight, string UpdatedBy, DateTime UpdatedAt);
+// Version: send it back when changing the position; if someone changed it meanwhile -> 409
+public record PositionDto(Stance Stance, int Weight, string UpdatedBy, DateTime UpdatedAt, uint Version);
+
+// Stance as text ("For"/"Against") so a wrong value is a field error. Version null = first time.
+public record PositionRequest(string? Stance, int? Weight, uint? Version);
 
 // One country's approved ballot and where it came from (HIS-02)
 public record CountryBallotDto(

@@ -106,6 +106,8 @@ public class MeridianDbContext : DbContext
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UpdatedBy).OnDelete(DeleteBehavior.Restrict);
             EnumAsText(e, x => x.Stance, "stance");
             e.ToTable(t => t.HasCheckConstraint("ck_vote_positions_weight", "weight BETWEEN 1 AND 5"));
+            // maps to the system column xmin: an UPDATE whose version doesn't match changes 0 rows
+            e.Property(x => x.Version).IsRowVersion();
         });
 
         b.Entity<AuditEvent>(e =>

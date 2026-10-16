@@ -1,9 +1,11 @@
+using System.Security.Claims;
 using Meridian.Api.Auth;
 using Meridian.Api.Conflicts;
 using Meridian.Api.Data;
 using Meridian.Api.Imports;
 using Meridian.Domain;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Meridian.Api.Votes;
 
@@ -25,6 +27,109 @@ public static class VoteEndpoints
         votes.MapGet("/{id:long}/timeline", Timeline).WithName("GetVoteTimeline")
             .Produces<List<TimelineEntryDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // POS-01: Admin only, enforced here (Analyst -> 403)
+        votes.MapPut("/{id:long}/position", SetPosition).WithName("SetVotePosition")
+            .RequireAuthorization(Policies.Admin)
+            .Produces<PositionDto>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+    }
+
+    // POS-01..03. Optimistic concurrency: the client sends the version it saw; the UPDATE only
+    // matches that version (xmin), so a change made meanwhile by someone else is never overwritten.
+    private static async Task<IResult> SetPosition(long id, PositionRequest request, MeridianDbContext db,
+        ClaimsPrincipal user, HttpContext http, CancellationToken ct)
+    {
+        // POS-02: every field error at once, next to its field
+        var errors = new Dictionary<string, string[]>();
+        var stanceName = Enum.GetNames<Stance>()
+            .FirstOrDefault(n => string.Equals(n, request.Stance?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(request.Stance))
+            errors["stance"] = new[] { "Stance is required: For or Against." };
+        else if (stanceName == null)
+            errors["stance"] = new[] { "Stance must be For or Against." };
+        if (request.Weight == null)
+            errors["weight"] = new[] { "Weight is required: a whole number from 1 to 5." };
+        else if (request.Weight is < 1 or > 5)
+            errors["weight"] = new[] { "Weight must be between 1 and 5." };
+        if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+        var stance = Enum.Parse<Stance>(stanceName!);
+        var weight = request.Weight!.Value;
+
+        if (!await db.Votes.AnyAsync(v => v.Id == id, ct)) return NotFound();
+
+        var position = await db.VotePositions.FirstOrDefaultAsync(p => p.VoteId == id, ct);
+        string? oldValue = null;
+        if (position == null)
+        {
+            position = new VotePosition { VoteId = id };
+            db.VotePositions.Add(position);
+        }
+        else
+        {
+            if (request.Version != position.Version)
+                return await ChangedMeanwhile(db, id, ct);
+            if (position.Stance == stance && position.Weight == weight)
+                return Results.Ok(ToDto(position));   // nothing changed: no audit event
+            oldValue = Describe(position.Stance, position.Weight);
+        }
+
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        // PostgreSQL keeps microseconds; .NET has 0.1 µs. Truncate so the response equals what is stored.
+        var now = DateTime.UtcNow;
+        now = new DateTime(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);
+        position.Stance = stance;
+        position.Weight = weight;
+        position.UpdatedBy = userId;
+        position.UpdatedAt = now;
+
+        // POS-03 / HIS-03: who, when, old, new. Saved in the same transaction as the change.
+        db.AuditEvents.Add(new AuditEvent
+        {
+            VoteId = id,
+            EventType = "PositionSet",
+            OldValue = oldValue,
+            NewValue = Describe(stance, weight),
+            Actor = userId,
+            At = now,
+            CorrelationId = http.TraceIdentifier,
+        });
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return await ChangedMeanwhile(db, id, ct);   // updated by someone else since we read it
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            return await ChangedMeanwhile(db, id, ct);   // someone else created the first position at the same moment
+        }
+
+        return Results.Ok(ToDto(position));
+    }
+
+    private static string Describe(Stance stance, int weight) => $"{stance}, weight {weight}";
+
+    private static PositionDto ToDto(VotePosition p) => new(p.Stance, p.Weight, p.UpdatedBy, p.UpdatedAt, p.Version);
+
+    private static async Task<IResult> ChangedMeanwhile(MeridianDbContext db, long voteId, CancellationToken ct)
+    {
+        var current = await db.VotePositions.AsNoTracking().Where(p => p.VoteId == voteId)
+            .Select(p => new PositionDto(p.Stance, p.Weight, p.UpdatedBy, p.UpdatedAt, p.Version))
+            .FirstAsync(ct);
+        return Results.Problem(
+            title: "Position was changed by someone else",
+            detail: $"{current.UpdatedBy} set it to {Describe(current.Stance, current.Weight)} at {current.UpdatedAt:yyyy-MM-dd HH:mm:ss} UTC. " +
+                    "Your change was not saved; review the current position and try again.",
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?> { ["current"] = current });
     }
 
     private static async Task<IResult> List(MeridianDbContext db, CancellationToken ct,
@@ -73,7 +178,7 @@ public static class VoteEndpoints
         var names = await CountryNames(db, ct);
 
         var position = await db.VotePositions.AsNoTracking().Where(p => p.VoteId == id)
-            .Select(p => new PositionDto(p.Stance, p.Weight, p.UpdatedBy, p.UpdatedAt))
+            .Select(p => new PositionDto(p.Stance, p.Weight, p.UpdatedBy, p.UpdatedAt, p.Version))
             .FirstOrDefaultAsync(ct);
         var openConflicts = await ConflictEndpoints.ToDtos(db,
             db.Conflicts.Where(c => c.VoteId == id && c.Status == ConflictStatus.Pending), ct);

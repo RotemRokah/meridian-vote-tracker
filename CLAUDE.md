@@ -262,6 +262,13 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 - **Country name from the member list (agreed):** the latest membership period's name, not the file's (ING-11).
 - **Vote list (agreed):** paged (default 50, max 500), newest first; filters `search` (id or title, ILIKE), `session`, `from`/`to`; `from > to` → 400 on `from`.
 - **Index for the timeline (agreed):** `import_rows (assembly_vote_id, country_code)`, migration `AddImportRowsVoteIndex`.
+- **Position optimistic concurrency (agreed):** `PUT /api/votes/{id}/position` takes `version` (what the client saw; null the first time). Stale version → 409 "Position was changed by someone else" with the current position. Version = PostgreSQL `xmin` (`IsRowVersion()`), so EF adds `WHERE xmin = @version` to the UPDATE; no column of our own. The migration `VotePositionRowVersion` is empty on purpose: EF generated `AddColumn("xmin")`, but xmin is a system column every table already has.
+- **How the position race is tested:** the HTTP test (two simultaneous PUTs) is usually decided by the explicit version check, so a separate deterministic test uses two DbContexts that read the same version: the second save must throw `DbUpdateConcurrencyException`. Verified to fail under "last write wins".
+- **Same values again (agreed):** 200, no audit event.
+- **No delete of a position (agreed):** it can change, not be removed.
+- **Non-numeric weight (agreed):** a JSON parse error → general 400, not a field error; out-of-range numbers (0, 7) → `errors.weight`.
+- **Audit `PositionSet`:** old/new as "For, weight 3", actor, correlation id; shows in the vote timeline (HIS-03 "who changed the weight and the previous value").
+- **Timestamps truncated to microseconds** before saving when the response echoes them from memory: PostgreSQL keeps µs, .NET 0.1 µs, so otherwise the PUT response and a later GET would differ.
 - **Log scopes as message templates:** `BeginScope("CorrelationId:{CorrelationId}", id)`. A `Dictionary` scope printed only its type name on the console, so the correlation id was invisible in logs until step 4 (fixed, covered by a test that captures log lines).
 
 ---

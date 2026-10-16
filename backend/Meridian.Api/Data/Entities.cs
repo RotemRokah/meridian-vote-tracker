@@ -111,6 +111,7 @@ public class VotePosition
     public int Weight { get; set; }               // 1..5
     public string UpdatedBy { get; set; } = "";
     public DateTime UpdatedAt { get; set; }
+    public uint Version { get; set; }              // PostgreSQL xmin: changes on every update (optimistic concurrency)
 }
 
 // Append-only log of every change (HIS-02..04). A DB trigger blocks UPDATE/DELETE.

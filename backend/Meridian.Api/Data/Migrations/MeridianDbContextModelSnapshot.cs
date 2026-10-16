@@ -706,6 +706,12 @@ namespace Meridian.Api.Data.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("updated_by");
 
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.Property<int>("Weight")
                         .HasColumnType("integer")
                         .HasColumnName("weight");
