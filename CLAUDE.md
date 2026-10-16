@@ -228,6 +228,11 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 - **Quarter for publishing:** derived from the snapshot's vote date range, or chosen on publish. Re-publishing a different snapshot for the same quarter: admin must unpublish first (audited).
 - **Azure:** use Document Intelligence (bonus; layout model gives tables + selection marks with per-cell confidence), Blob Storage (raw files, behind interface), Application Insights (if time). Don't use: Azure OpenAI/Claude (non-deterministic, no per-cell confidence), Azure PostgreSQL (compose must run for reviewers without depending on the assignment window; connection string is configurable), Key Vault (local dev would still need credentials; prod = Managed Identity + Key Vault), Cosmos DB (data is relational with cross-table constraints).
 - **Data access:** EF Core for CRUD + migrations + constraints; raw SQL for COPY and the set-based snapshot calculation over ~1M rows.
+- **Seed file in git (agreed):** `member_states.csv` (4 KB) is copied to `backend/Meridian.Api/Seed/` and committed; without it `docker compose up` can't seed on a reviewer's machine. The large `data/` files stay out.
+- **User ids (agreed):** readable strings `dana`, `omer`, `lena`, used in `X-User-Id` and as `actor` in audit rows.
+- **403 test timing (agreed):** step 2 tests the policies directly (Analyst denied `Admin`); the HTTP 403 test is written in step 7 against the first real Admin endpoint, instead of adding a fake endpoint.
+- **Migrations at API startup:** simple for compose and reviewers; in production they'd be a separate deploy step.
+- **Enums stored as text** with a CHECK constraint per column (readable in SQL, safe against typos).
 
 ---
 
@@ -242,7 +247,7 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 ### Day 2: decisions, history, snapshots
 5. **Conflicts.** `GET /conflicts?status=&voteId=`, `GET /conflicts/{id}`, `POST /conflicts/{id}/decision` (approve/reject + comment) with atomic update and 409. Test: two parallel decisions → one 200, one 409.
 6. **History.** Audit events from imports, decisions, positions. `GET /votes`, `GET /votes/{id}` (details, country votes with "changed by decision" marker, position, open conflicts), `GET /votes/{id}/timeline`.
-7. **Positions.** `PUT /votes/{id}/position` (Admin only, validation → field errors, audit old/new).
+7. **Positions.** `PUT /votes/{id}/position` (Admin only, validation → field errors, audit old/new). Includes the HTTP test: Analyst gets 403 ProblemDetails (moved here from step 2).
 8. **Snapshots.** `POST /snapshots` (filter/list, missing-position check), background calc (set-based SQL into `snapshot_inputs` then `snapshot_scores`), `GET /snapshots`, `GET /snapshots/{id}`, `GET /snapshots/{id}/countries/{code}` (per-vote contribution), `POST /snapshots/{id}/publish` (Admin). Test: snapshot → approve conflict → snapshot unchanged; new snapshot uses new value.
 9. **Historic import.** Run `assembly_historic.csv`, measure time, fix bottlenecks; snapshot over full history.
 

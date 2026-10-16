@@ -1,5 +1,5 @@
 # Input data: large files, never commit (assembly_historic.csv > 100 MB)
-data/
+/data/
 
 # Secrets
 .env
