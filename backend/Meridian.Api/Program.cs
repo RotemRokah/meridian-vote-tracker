@@ -1,8 +1,12 @@
 using Meridian.Api.Auth;
 using Meridian.Api.Data;
 using Meridian.Api.Endpoints;
+using System.Text.Json.Serialization;
+using Meridian.Api.Imports;
 using Meridian.Api.Infrastructure;
+using Meridian.Api.Storage;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -25,6 +29,18 @@ builder.Services.AddDbContext<MeridianDbContext>((sp, o) =>
 builder.Services.AddAuthentication(UserIdAuthenticationHandler.SchemeName)
     .AddScheme<AuthenticationSchemeOptions, UserIdAuthenticationHandler>(UserIdAuthenticationHandler.SchemeName, null);
 builder.Services.AddAuthorization(Policies.Add);
+
+// Imports: file store, background worker, and room for large uploads (historic file is ~103 MB)
+builder.Services.AddSingleton<IFileStore, LocalFileStore>();
+builder.Services.AddScoped<ImportProcessor>();
+builder.Services.AddHostedService<ImportWorker>();
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = ImportEndpoints.MaxUploadBytes);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = ImportEndpoints.MaxUploadBytes);
+
+// Enums travel as names ("Pending", not 0): readable JSON, and the generated TS client gets string enums
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(o =>
+    o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));   // Swagger reads these
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
@@ -50,6 +66,7 @@ builder.Services.AddProblemDetails(o =>
     o.CustomizeProblemDetails = ctx =>
         ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
 });
+builder.Services.AddExceptionHandler<BadRequestExceptionHandler>();
 
 var app = builder.Build();
 
@@ -79,6 +96,7 @@ app.UseAuthorization();
 
 var api = app.MapGroup("/api");
 api.MapSystemEndpoints();
+api.MapImportEndpoints();
 
 app.Run();
 

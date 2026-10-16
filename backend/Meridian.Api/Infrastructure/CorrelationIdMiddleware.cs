@@ -26,7 +26,9 @@ public class CorrelationIdMiddleware
         context.TraceIdentifier = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
 
-        using (_logger.BeginScope(new Dictionary<string, object> { ["CorrelationId"] = correlationId }))
+        // a message template (not a Dictionary): the console prints it as "CorrelationId:abc",
+        // and structured log sinks still get CorrelationId as a field
+        using (_logger.BeginScope("CorrelationId:{CorrelationId}", correlationId))
         {
             await _next(context);
         }

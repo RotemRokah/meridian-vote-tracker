@@ -2,3 +2,6 @@
 * text=auto eol=lf
 *.ico binary
 *.pdf binary
+
+# test fixtures: keep exact bytes (BOM, line endings)
+backend/Meridian.Tests/TestData/*.csv binary

@@ -241,6 +241,15 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 - **403 test timing (agreed):** step 2 tests the policies directly (Analyst denied `Admin`); the HTTP 403 test is written in step 7 against the first real Admin endpoint, instead of adding a fake endpoint.
 - **Migrations at API startup:** simple for compose and reviewers; in production they'd be a separate deploy step.
 - **Enums stored as text** with a CHECK constraint per column (readable in SQL, safe against typos).
+- **Test fixtures (agreed):** q1 and rev2 (~1.2 MB) are committed under `backend/Meridian.Tests/TestData/` (marked `binary` in `.gitattributes`, so the BOM and bytes stay exact). The real-file test must run for reviewers; historic stays out.
+- **Header checked at upload (agreed):** wrong header → 400 on the `file` field, no import created. The worker checks it again before processing.
+- **Same file twice (agreed):** processed normally; the report notes "Identical file to import #X" (by SHA-256). ING-12 makes it a no-op.
+- **Interrupted import (agreed):** an import still `Running` when the API starts is marked `Failed` with a clear message; not resumed. Re-upload is safe (idempotent classification). Assumes one API instance runs the worker.
+- **Audit granularity (agreed):** per vote per import (`VoteCreated`, `BallotsAdded` with a count) and per conflict (`ConflictOpened`). Not one event per ingested ballot (~1M rows for historic); a ballot's origin is `country_votes.source_import_id` + `import_rows`.
+- **Phase 2 writes via EF (agreed),** one transaction per batch of 200 votes; measure in step 9 and switch to COPY only if needed. Row outcomes are written with one `UPDATE … FROM unnest(arrays)` per batch.
+- **Progress meaning:** `total_rows` = data lines (counted in a pre-pass); `processed_rows` = rows with a final class (invalid rows while reading, valid rows per vote batch). Small files jump in one step; historic moves in ~33 steps.
+- **Malformed requests → 4xx, not 500:** `BadRequestExceptionHandler` maps ASP.NET's `BadHttpRequestException` to its own status (400 broken form, 413 upload over 200 MB) as ProblemDetails.
+- **Log scopes as message templates:** `BeginScope("CorrelationId:{CorrelationId}", id)`. A `Dictionary` scope printed only its type name on the console, so the correlation id was invisible in logs until step 4 (fixed, covered by a test that captures log lines).
 
 ---
 

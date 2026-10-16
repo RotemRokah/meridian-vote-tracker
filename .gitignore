@@ -23,5 +23,5 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# Local file store for uploaded files
-storage/
+# Uploaded files when running the API locally (dotnet run)
+/backend/Meridian.Api/uploads/
