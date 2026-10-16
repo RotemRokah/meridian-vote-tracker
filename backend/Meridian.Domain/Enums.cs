@@ -17,3 +17,9 @@ public enum ConflictStatus { Pending, Approved, Rejected }
 public enum Stance { For, Against }
 
 public enum SnapshotStatus { Queued, Running, Completed, Failed }
+
+// Y = yes, N = no, A = abstain, X = absent
+public enum Ballot { Y, N, A, X }
+
+// Vote-level outcome of one import (ING-14 "what happened per vote")
+public enum VoteDetailsOutcome { Created, Unchanged, Conflict, Contradiction, NotCreated }

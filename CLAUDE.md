@@ -210,7 +210,7 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 ### Key mechanisms
 - **Conflict decision concurrency (CON-05):** `UPDATE conflicts SET status=@s, decided_by=…, decided_at=now() WHERE id=@id AND status='Pending'` inside a transaction that also updates `country_votes`/`votes` and writes `audit_events`. 0 rows affected → 409 ProblemDetails with current state (who decided, when, value).
 - **No reopened conflicts (ING-12):** partial unique index above; ingestion links the row to the existing pending conflict instead of inserting.
-- **Previously rejected proposal re-arrives:** link to the existing decided conflict, don't open a new one; classify as Conflict with reason "already rejected on <date> by <user>". (Draft decision, confirm with me.)
+- **Previously rejected proposal re-arrives:** link to the existing decided conflict, don't open a new one; classify as Conflict with reason "already rejected on <date> by <user>". (Agreed.)
 - **Imports run one at a time** (single worker, `FOR UPDATE SKIP LOCKED` pick) → no two imports touch the same vote concurrently.
 - **Large files:** phase 1 streams the CSV and bulk-writes raw rows to `import_rows` (Npgsql binary COPY), updating `processed_rows`; phase 2 reads `import_rows` ordered by `assembly_vote_id`, processes one vote at a time (load its approved data, classify via Domain, write results) in batched transactions. Memory stays bounded.
 - **Raw file storage:** `IFileStore` abstraction; local disk by default, Azure Blob when configured.
@@ -222,7 +222,15 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 
 - **Normalization (ING-13):** trim whitespace; uppercase country codes (`deu`→`DEU`), flagged in the report as "normalized". Ballot variants (`Yes`, `YES`, `0`, `?`) and non-ISO dates are **rejected, not guessed**. Critical data: rejecting is safer than guessing.
 - **Vote details inconsistent inside a file:** all valid rows of that vote in that file are Contradiction; vote not ingested from this file. Can't know which title is right.
-- **Title comparison:** exact match after trim (double-space variant counts as different). Open: whether to collapse internal whitespace. If we do, it's a reported normalization.
+- **Title comparison (agreed):** exact match after trim; internal whitespace is NOT collapsed, so q1 MA/2024/025 (double-space variant) is a Contradiction. We report problems, we don't fix them.
+- **Same country + same ballot twice, rows not identical (agreed):** e.g. Turkey/Türkiye or different `published_at`. First row is classified normally, the rest are Duplicate with a reason naming the differing fields. Not a Contradiction: the value agrees. Doesn't occur in the given files.
+- **Vote created only if ≥1 ballot is ingested (agreed):** a vote whose rows are all invalid/contradictory isn't created empty (outcome `NotCreated`); it's created by the first file that brings a usable row.
+- **Required fields (agreed):** all except `country_name` and `published_at` (informational, not used in any decision).
+- **Invalid rows report every issue (agreed),** not only the first: field, reason, original value.
+- **BOM (agreed):** stripped and noted in the import report as a file-level normalization. Note: .NET `StreamReader` strips it silently by default, so the importer must detect it explicitly.
+- **Wrong header (agreed):** the whole import fails with a clear error; no row of such a file is trusted.
+- **Order of checks:** per-row validation (ING-04) → exact duplicates → vote-details consistency (ING-05) → one ballot per country (ING-05) → compare with approved (New/Unchanged/Conflict). Malformed rows never reach the consistency check.
+- **Vote-details conflict doesn't block ballots:** country rows are still classified on their own ballot (7.2: IND/101 Unchanged while 101's title is in conflict).
 - **Scoring:** A and X don't count (formula counts only Y/N), shown in breakdown. Non-member votes can't exist (rejected at ingestion). Country with zero counted votes → score N/A, unranked (0 would be a lie). Vote without position → snapshot creation is blocked with the list of such votes; admin can explicitly exclude them, recorded in `rules`. Rules stored per snapshot (jsonb) and shown in its breakdown.
 - **Ranking ties:** same score → same rank (competition ranking 1,2,2,4).
 - **Quarter for publishing:** derived from the snapshot's vote date range, or chosen on publish. Re-publishing a different snapshot for the same quarter: admin must unpublish first (audited).
