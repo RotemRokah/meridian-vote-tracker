@@ -26,6 +26,18 @@ Returns `202` with the import id right away; a background worker processes it. F
 report at `GET /api/imports/{id}`, and the rows behind it at `GET /api/imports/{id}/rows?classification=Invalid`.
 Uploaded files are kept in the `file-storage` docker volume.
 
+## Review conflicts
+
+```bash
+curl -H "X-User-Id: dana" "http://localhost:4200/api/conflicts?vote=MA%2F2024%2F003"
+```
+
+```bash
+curl -H "X-User-Id: dana" -H "Content-Type: application/json" -d '{"decision":"Approve","comment":"checked"}' http://localhost:4200/api/conflicts/4/decision
+```
+
+A second decision on the same conflict gets `409` with who decided, when, and the current state.
+
 ## Run tests
 
 Docker must be running: integration tests start their own PostgreSQL 16 (Testcontainers).

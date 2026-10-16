@@ -1,4 +1,5 @@
 using Meridian.Api.Auth;
+using Meridian.Api.Conflicts;
 using Meridian.Api.Data;
 using Meridian.Api.Endpoints;
 using System.Text.Json.Serialization;
@@ -97,6 +98,7 @@ app.UseAuthorization();
 var api = app.MapGroup("/api");
 api.MapSystemEndpoints();
 api.MapImportEndpoints();
+api.MapConflictEndpoints();
 
 app.Run();
 

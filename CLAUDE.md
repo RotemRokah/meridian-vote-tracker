@@ -249,6 +249,13 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 - **Phase 2 writes via EF (agreed),** one transaction per batch of 200 votes; measure in step 9 and switch to COPY only if needed. Row outcomes are written with one `UPDATE … FROM unnest(arrays)` per batch.
 - **Progress meaning:** `total_rows` = data lines (counted in a pre-pass); `processed_rows` = rows with a final class (invalid rows while reading, valid rows per vote batch). Small files jump in one step; historic moves in ~33 steps.
 - **Malformed requests → 4xx, not 500:** `BadRequestExceptionHandler` maps ASP.NET's `BadHttpRequestException` to its own status (400 broken form, 413 upload over 200 MB) as ProblemDetails.
+- **Conflict list filter (agreed):** `?vote=` takes the assembly vote id users see (`MA/2024/003`), not the DB id; `?status=` defaults to `Pending` (decided ones via `Approved`/`Rejected`, CON-06).
+- **Stale approved value (agreed):** approve only applies if the approved value is still the one the conflict was opened against (`UPDATE … WHERE ballot = @approvedValue`); otherwise 409 "Approved value has changed" with the current state, and nothing changes. Typical case: two pending proposals (A and N) for one ballot; approving A makes N stale, a human must reject or re-review it. Reject is always allowed.
+- **One audit event per decision (agreed):** `ConflictApproved`/`ConflictRejected` with old → new, `import_id` = the proposed file, actor, correlation id. The comment lives on the conflict row (the event points to it via `conflict_id`).
+- **Approved ballot gets the new source (agreed):** on approve, `country_votes.source_import_id` = proposed file, `approved_by`/`approved_at` = the decider (the "changed by decision" marker for step 6).
+- **Vote details have one source (agreed, simplification):** approving a title/date/session conflict sets `votes.source_import_id` to the proposed file; per-field history is in the audit log.
+- **Comment optional, ≤1000 chars (agreed);** `decision` is text (`Approve`/`Reject`, case-insensitive) so a wrong value is a field error.
+- **Decision concurrency, how it works:** one transaction; the claim `UPDATE conflicts … WHERE id = @id AND status = 'Pending'` takes a row lock, so a simultaneous second decision waits, then matches 0 rows → 409 "Conflict already decided" with who/when/current state. Tested with 10 simultaneous Approve/Reject pairs, and the test was confirmed to fail when the `status = 'Pending'` guard is removed.
 - **Log scopes as message templates:** `BeginScope("CorrelationId:{CorrelationId}", id)`. A `Dictionary` scope printed only its type name on the console, so the correlation id was invisible in logs until step 4 (fixed, covered by a test that captures log lines).
 
 ---
