@@ -174,7 +174,8 @@ public static class ConflictEndpoints
     private static async Task<ConflictDto?> FindDto(MeridianDbContext db, long id, CancellationToken ct) =>
         (await ToDtos(db, db.Conflicts.Where(c => c.Id == id), ct)).SingleOrDefault();
 
-    private static async Task<List<ConflictDto>> ToDtos(MeridianDbContext db, IQueryable<Conflict> query, CancellationToken ct)
+    // also used by the vote screen (open conflicts of one vote)
+    public static async Task<List<ConflictDto>> ToDtos(MeridianDbContext db, IQueryable<Conflict> query, CancellationToken ct)
     {
         var rows = await (from c in query.AsNoTracking()
                           join v in db.Votes on c.VoteId equals v.Id

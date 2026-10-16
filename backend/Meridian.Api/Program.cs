@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Meridian.Api.Imports;
 using Meridian.Api.Infrastructure;
 using Meridian.Api.Storage;
+using Meridian.Api.Votes;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
@@ -99,6 +100,7 @@ var api = app.MapGroup("/api");
 api.MapSystemEndpoints();
 api.MapImportEndpoints();
 api.MapConflictEndpoints();
+api.MapVoteEndpoints();
 
 app.Run();
 

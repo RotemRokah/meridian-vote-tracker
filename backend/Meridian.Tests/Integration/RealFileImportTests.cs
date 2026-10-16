@@ -1,5 +1,7 @@
+using System.Net.Http.Json;
 using Meridian.Api.Data;
 using Meridian.Api.Imports;
+using Meridian.Api.Votes;
 using Meridian.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -171,6 +173,18 @@ public class RealFileImportTests
         // reports stay retrievable after the fact (ING-15)
         var again = await ApiFactory.WaitForImport(client, q1.Import.Id);
         Assert.Equal(s1.Counts, again.Summary!.Counts);
+
+        // HIS-04 on real data: vote 025 was a contradiction in q1, created from rev2, unchanged on re-upload
+        var vote025 = (await client.GetFromJsonAsync<PagedResult<VoteListItemDto>>(
+            "/api/votes?search=MA%2F2024%2F025", ApiFactory.Json))!.Items.Single();
+        var timeline = (await client.GetFromJsonAsync<List<TimelineEntryDto>>(
+            $"/api/votes/{vote025.Id}/timeline", ApiFactory.Json))!;
+        Assert.Equal(new[] { "FileProcessed", "FileProcessed", "VoteCreated", "BallotsAdded", "FileProcessed" },
+            timeline.Select(t => t.EventType));
+        var rev2Rows = CountRows(Rev2, "MA/2024/025");
+        Assert.Equal(($"{vote025Rows} Contradiction", q1.Import.Id), (timeline[0].Detail, timeline[0].Source!.ImportId));
+        Assert.Equal(($"{rev2Rows} New", r2.Import.Id), (timeline[1].Detail, timeline[1].Source!.ImportId));
+        Assert.Equal(($"{rev2Rows} Unchanged", r3.Import.Id), (timeline[4].Detail, timeline[4].Source!.ImportId));
     }
 
     private static int CountRows(string file, string voteId) =>

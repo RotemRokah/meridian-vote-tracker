@@ -56,6 +56,8 @@ public class MeridianDbContext : DbContext
             EnumAsText(e, x => x.Classification, "classification");
             e.HasIndex(x => new { x.ImportId, x.LineNo }).IsUnique();
             e.HasIndex(x => new { x.ImportId, x.Classification });
+            // vote timeline: every file row that touched a vote (or one country in it)
+            e.HasIndex(x => new { x.AssemblyVoteId, x.CountryCode });
         });
 
         b.Entity<Vote>(e =>

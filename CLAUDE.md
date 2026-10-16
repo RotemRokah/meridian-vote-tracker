@@ -256,6 +256,12 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 - **Vote details have one source (agreed, simplification):** approving a title/date/session conflict sets `votes.source_import_id` to the proposed file; per-field history is in the audit log.
 - **Comment optional, ≤1000 chars (agreed);** `decision` is text (`Approve`/`Reject`, case-insensitive) so a wrong value is a field error.
 - **Decision concurrency, how it works:** one transaction; the claim `UPDATE conflicts … WHERE id = @id AND status = 'Pending'` takes a row lock, so a simultaneous second decision waits, then matches 0 rows → 409 "Conflict already decided" with who/when/current state. Tested with 10 simultaneous Approve/Reject pairs, and the test was confirmed to fail when the `status = 'Pending'` guard is removed.
+- **Vote route uses the DB id (agreed):** `/api/votes/{id}`; the assembly id has slashes. Find a vote with `GET /api/votes?search=MA/2024/003`.
+- **Timeline = audit + file rows (agreed):** `audit_events` give what changed; `import_rows` give every file that touched the vote, even with no change ("rev2.csv: 148 Unchanged, 1 Conflict", "q1.csv: 149 Contradiction"). No extra audit row per unchanged row. File entries are placed at the import's start time, so they come before the changes that import made.
+- **Timeline `?country=` (agreed):** that country's row from each file (line, value, class, reason) plus its events. Answers "why did BRA's ballot change, from which file, who approved" in one call.
+- **Country name from the member list (agreed):** the latest membership period's name, not the file's (ING-11).
+- **Vote list (agreed):** paged (default 50, max 500), newest first; filters `search` (id or title, ILIKE), `session`, `from`/`to`; `from > to` → 400 on `from`.
+- **Index for the timeline (agreed):** `import_rows (assembly_vote_id, country_code)`, migration `AddImportRowsVoteIndex`.
 - **Log scopes as message templates:** `BeginScope("CorrelationId:{CorrelationId}", id)`. A `Dictionary` scope printed only its type name on the console, so the correlation id was invisible in logs until step 4 (fixed, covered by a test that captures log lines).
 
 ---

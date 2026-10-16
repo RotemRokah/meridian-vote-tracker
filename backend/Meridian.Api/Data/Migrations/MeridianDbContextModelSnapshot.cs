@@ -388,6 +388,9 @@ namespace Meridian.Api.Data.Migrations
                     b.HasIndex("ConflictId")
                         .HasDatabaseName("ix_import_rows_conflict_id");
 
+                    b.HasIndex("AssemblyVoteId", "CountryCode")
+                        .HasDatabaseName("ix_import_rows_assembly_vote_id_country_code");
+
                     b.HasIndex("ImportId", "Classification")
                         .HasDatabaseName("ix_import_rows_import_id_classification");
 
