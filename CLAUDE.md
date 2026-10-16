@@ -173,7 +173,7 @@ CSV columns: `assembly_vote_id,session,vote_date,resolution_title,country_code,c
 - Values that were not ingested from q1 (invalid/contradiction) and now come clean → New: MA/2024/020 ARG (A), MA/2024/020 AZE (A), MA/2024/012 FRA (A).
 - Vote-detail conflicts: MA/2024/009 title `… in Coastal Zones` → `… in Coastal Zones: Revised`; MA/2024/014 date 2024-02-05 → 2024-02-06.
 - ~72 country rows that were missing from existing votes in q1 appear in rev2 → New (ING-10).
-- 4 country rows present in q1 are absent in rev2 (besides MA/2024/040) → no action.
+- No valid q1 country row is absent from rev2 (besides MA/2024/040); only the invalid q1 rows FRN/015 and NZL/033 don't reappear → no action either way (ING-09). (Corrected 2026-10-16: an earlier note said "4 rows"; a per-vote comparison of both files shows 0.)
 - TUR appears as both `Turkey` and `Türkiye` across files → not a conflict (ING-11).
 - Re-upload rev2 → 0 new, 0 new conflicts.
 
