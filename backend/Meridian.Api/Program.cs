@@ -53,6 +53,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
     o.SwaggerDoc("v1", new() { Title = "Meridian Vote Tracker API", Version = "v1" });
+    // C# nullability goes into the OpenAPI schema: `string` is required, `string?` may be null.
+    // The generated TypeScript client then knows which fields are always there.
+    o.SupportNonNullableReferenceTypes();
+    o.NonNullableReferenceTypesAsRequired();
+    o.UseAllOfToExtendReferenceSchemas();   // lets a reference (ImportSummary?, ImportStage?) be marked nullable
 
     // "Authorize" button in Swagger UI: type dana / omer / lena
     var scheme = new OpenApiSecurityScheme

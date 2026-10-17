@@ -66,9 +66,24 @@ Before step 9 the import took 610 s with 1.29 GB of memory; what changed and why
 In the regular database a full-history snapshot needs every vote to have a position (set by an Admin);
 the volume test sets test positions in its own throwaway database.
 
+## The UI
+
+http://localhost:4200: **Imports** (upload, live progress, reports), **Review** (conflicts), **Votes** (details, timeline,
+position for the Admin), **Snapshots** (create, scores, per-country breakdown, publish). Pick who you are in the top-right
+corner: Dana and Omer are Analysts, Lena is the Admin. The API checks every role itself (403), the UI only hides buttons.
+
+The API client in `frontend/src/app/api/api-client.ts` is generated from the API's OpenAPI document, never edited by hand.
+After an API change, with the API running on port 8080:
+
+```bash
+cd frontend && npm run gen-api
+```
+
 ## Run tests
 
 Docker must be running: integration tests start their own PostgreSQL 16 (Testcontainers).
+`npm test` (frontend) clears Vitest's cache first: without that, a change to a component's inline template could run
+against a stale build.
 `HistoricImportTests` runs only when `data/assembly_historic.csv` exists (or `MERIDIAN_HISTORIC_CSV` points to it);
 otherwise it is reported as Skipped. It takes about 7 minutes.
 `backend/Meridian.Tests/TestData/` holds copies of the two 2024 assignment files, so the real-file import test
@@ -76,7 +91,7 @@ runs anywhere (the 103 MB historic file stays out of git).
 
 ```bash
 dotnet test backend/Meridian.sln
-cd frontend && npm ci && npx ng test --watch=false
+cd frontend && npm ci && npm test
 ```
 
 ## Local development without docker (API + Angular)

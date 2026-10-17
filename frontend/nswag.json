@@ -1,0 +1,30 @@
+{
+  "runtime": "Net80",
+  "documentGenerator": {
+    "fromDocument": {
+      "url": "http://localhost:8080/swagger/v1/swagger.json"
+    }
+  },
+  "codeGenerators": {
+    "openApiToTypeScriptClient": {
+      "className": "MeridianApi",
+      "template": "Angular",
+      "httpClass": "HttpClient",
+      "injectionTokenType": "InjectionToken",
+      "rxJsVersion": 7.0,
+      "typeScriptVersion": 5.0,
+      "dateTimeType": "String",
+      "nullValue": "Undefined",
+      "generateClientClasses": true,
+      "generateClientInterfaces": false,
+      "generateDtoTypes": true,
+      "typeStyle": "Interface",
+      "enumStyle": "StringLiteral",
+      "generateOptionalParameters": true,
+      "useSingletonProvider": true,
+      "operationGenerationMode": "SingleClientFromOperationId",
+      "markOptionalProperties": false,
+      "output": "src/app/api/api-client.ts"
+    }
+  }
+}

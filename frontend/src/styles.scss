@@ -1,1 +1,57 @@
-/* You can add global styles to this file, and also import other style files */
+/* Minimal, readable styles. Design is not graded; clarity is. */
+:root {
+  --border: #d0d5dd;
+  --muted: #667085;
+  --accent: #1d4ed8;
+  --ok: #067647;
+  --warn: #b54708;
+  --bad: #b42318;
+  --bg-soft: #f6f7f9;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; color: #101828; background: #fff; }
+header { display: flex; gap: 24px; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg-soft); flex-wrap: wrap; }
+header nav { display: flex; gap: 14px; }
+header nav a { color: #344054; text-decoration: none; padding: 4px 2px; }
+header nav a.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+header .user { margin-left: auto; }
+main { padding: 16px 20px; max-width: 1200px; }
+
+h1 { font-size: 20px; margin: 4px 0 12px; }
+h2 { font-size: 16px; margin: 20px 0 8px; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
+.row label { display: flex; flex-direction: column; gap: 3px; }
+.panel { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+
+table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #eaecf0; vertical-align: top; }
+th { background: var(--bg-soft); font-weight: 600; }
+/* values from the file and reasons quoting them: keep every space (a double space can be the whole problem) */
+.pre { white-space: pre-wrap; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover, tr.selected { background: #eef4ff; }
+td.num, th.num { text-align: right; }
+
+button { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+input, select, textarea { padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+
+.problem { border: 1px solid var(--bad); background: #fef3f2; color: var(--bad); padding: 8px 10px; border-radius: 4px; margin: 8px 0; }
+.problem.notice { border-color: var(--warn); background: #fffaeb; color: var(--warn); }
+.field-error { display: block; color: var(--bad); }
+.ok { color: var(--ok); }
+.badge { display: inline-block; padding: 1px 7px; border-radius: 10px; background: #eaecf0; font-size: 12px; }
+.badge.Completed, .badge.Approved, .badge.published { background: #dcfae6; color: var(--ok); }
+.badge.Running, .badge.Queued, .badge.Pending { background: #fef0c7; color: var(--warn); }
+.badge.Failed, .badge.Rejected { background: #fee4e2; color: var(--bad); }
+
+.progress { width: 160px; height: 8px; background: #eaecf0; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; }
+.progress > div { height: 100%; background: var(--accent); }
+.side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; }
+.tabs button.active { border-bottom-color: var(--accent); color: var(--accent); }

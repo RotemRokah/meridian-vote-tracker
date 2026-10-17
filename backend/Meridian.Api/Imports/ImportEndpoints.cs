@@ -27,9 +27,11 @@ public static class ImportEndpoints
         imports.MapGet("", List).WithName("GetImports");
 
         imports.MapGet("/{id:long}", Get).WithName("GetImport")
+            .Produces<ImportDetailsDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         imports.MapGet("/{id:long}/rows", GetRows).WithName("GetImportRows")
+            .Produces<PagedResult<ImportRowDto>>()
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
     }
