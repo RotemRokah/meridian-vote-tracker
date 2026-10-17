@@ -17,9 +17,11 @@ import { SelectedUser } from './core/selected-user';
       </nav>
       <label class="user">
         Acting as
-        <select [value]="selected.id()" (change)="selected.select($any($event.target).value)" data-testid="user-switcher">
+        <!-- each option says if it is the acting user: the options arrive after the stored id,
+             so a [value] on the select alone left the browser showing the first option (Dana) while acting as another -->
+        <select (change)="selected.select($any($event.target).value)" data-testid="user-switcher">
           @for (u of selected.users(); track u.id) {
-            <option [value]="u.id">{{ u.name }} ({{ u.role }})</option>
+            <option [value]="u.id" [selected]="u.id === selected.id()">{{ u.name }} ({{ u.role }})</option>
           }
         </select>
       </label>
@@ -33,6 +35,10 @@ export class App {
   protected readonly selected = inject(SelectedUser);
 
   constructor() {
-    inject(MeridianApi).getUsers().subscribe((users) => this.selected.users.set(users));
+    inject(MeridianApi).getUsers().subscribe((users) => {
+      this.selected.users.set(users);
+      // a stored id that is not a user (anymore): act as the first user, visibly, instead of an unknown one
+      if (users.length && !users.some((u) => u.id === this.selected.id())) this.selected.select(users[0].id);
+    });
   }
 }
