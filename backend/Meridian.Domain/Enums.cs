@@ -6,6 +6,9 @@ public enum UserRole { Analyst, Admin }
 
 public enum ImportStatus { Queued, Running, Completed, Failed }
 
+// While Running: step 1 reads the file, step 2 classifies votes (progress counts per step)
+public enum ImportStage { Reading, Classifying }
+
 // ING-06: every row gets exactly one of these
 public enum RowClassification { New, Unchanged, Duplicate, Invalid, Contradiction, Conflict }
 

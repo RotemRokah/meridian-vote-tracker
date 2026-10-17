@@ -1,6 +1,9 @@
 services:
   db:
     image: postgres:16-alpine
+    # bulk imports write ~1 GB: bigger WAL and buffers avoid constant checkpoints.
+    # Durability unchanged (synchronous_commit stays on).
+    command: ["postgres", "-c", "max_wal_size=4GB", "-c", "shared_buffers=512MB"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-meridian}
       POSTGRES_USER: ${POSTGRES_USER:-meridian}
@@ -21,6 +24,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB:-meridian};Username=${POSTGRES_USER:-meridian};Password=${POSTGRES_PASSWORD}
       Storage__Path: /app/uploads
+      # workstation GC: much lower memory in a container than the server GC default
+      DOTNET_gcServer: "0"
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:

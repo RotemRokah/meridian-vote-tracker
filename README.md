@@ -50,9 +50,27 @@ Returns `202`; the score is computed in the background. Read it at `GET /api/sna
 `/api/snapshots/{id}/countries/BRA`, and the exact frozen inputs at `/api/snapshots/{id}/inputs`. Publish (Admin):
 `POST /api/snapshots/{id}/publish`. Score = 100 × matched weight / counted weight; only Y and N count.
 
+## Volume: the historic file
+
+`assembly_historic.csv` (962,171 rows, 103 MB) is not in git. Measured in docker on a Windows laptop (Docker Desktop):
+
+| | Result |
+|---|---|
+| Upload (`202`) | 4.8 s |
+| Import, end to end | 286–350 s (depends on machine load); progress moves every second ("Reading", then "Classifying") |
+| API memory during the import | peak 278 MB |
+| Full-history snapshot (6,480 votes, 962,109 country-votes) | 14.5 s |
+| Vote list, vote details, timeline, import rows by class | 0.04–0.32 s |
+
+Before step 9 the import took 610 s with 1.29 GB of memory; what changed and why is in `DECISIONS.md`.
+In the regular database a full-history snapshot needs every vote to have a position (set by an Admin);
+the volume test sets test positions in its own throwaway database.
+
 ## Run tests
 
 Docker must be running: integration tests start their own PostgreSQL 16 (Testcontainers).
+`HistoricImportTests` runs only when `data/assembly_historic.csv` exists (or `MERIDIAN_HISTORIC_CSV` points to it);
+otherwise it is reported as Skipped. It takes about 7 minutes.
 `backend/Meridian.Tests/TestData/` holds copies of the two 2024 assignment files, so the real-file import test
 runs anywhere (the 103 MB historic file stays out of git).
 

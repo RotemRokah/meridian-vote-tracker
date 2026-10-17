@@ -61,6 +61,10 @@ public class SnapshotCalculator
         var rules = JsonSerializer.Deserialize<SnapshotRules>(snapshot.Rules, SnapshotEndpoints.Json)!;
         var timer = System.Diagnostics.Stopwatch.StartNew();
 
+        // Npgsql's default command timeout is 30 s; copying ~1M country-votes can take longer.
+        // Background job, nobody is waiting on a request: allow minutes.
+        _db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
         var inputs = await _db.Database.ExecuteSqlRawAsync(FreezeSql, new[]

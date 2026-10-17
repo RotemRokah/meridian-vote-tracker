@@ -31,6 +31,7 @@ public class Import
     public string UploadedBy { get; set; } = "";
     public DateTime UploadedAt { get; set; }
     public ImportStatus Status { get; set; }
+    public ImportStage? Stage { get; set; }        // which step a running import is in; null otherwise
     public int? TotalRows { get; set; }
     public int ProcessedRows { get; set; }
     public DateTime? StartedAt { get; set; }

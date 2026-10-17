@@ -3,7 +3,7 @@ using Meridian.Domain;
 namespace Meridian.Api.Imports;
 
 public record ImportDto(
-    long Id, string FileName, string UploadedBy, DateTime UploadedAt, ImportStatus Status,
+    long Id, string FileName, string UploadedBy, DateTime UploadedAt, ImportStatus Status, ImportStage? Stage,
     int? TotalRows, int ProcessedRows, DateTime? StartedAt, DateTime? CompletedAt, string? Error);
 
 // The full report (ING-14): stored as jsonb on the import, so it can be opened days later (ING-15)

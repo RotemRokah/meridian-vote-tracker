@@ -39,6 +39,9 @@ public class ImportProcessor
 
     public async Task ProcessAsync(long importId, CancellationToken ct)
     {
+        // background job: a batch statement on a big file may exceed Npgsql's 30 s default
+        _db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+
         var import = await _db.Imports.AsNoTracking().SingleAsync(i => i.Id == importId, ct);
         var timer = Stopwatch.StartNew();
         _logger.LogInformation("Import {ImportId} started: {FileName}", import.Id, import.FileName);
@@ -51,8 +54,20 @@ public class ImportProcessor
         var total = await CountDataLines(import.StoragePath, ct);
         await ImportsById(import.Id).ExecuteUpdateAsync(s => s.SetProperty(i => i.TotalRows, total), ct);
 
+        _logger.LogInformation("Import {ImportId} pre-pass: {Rows} rows counted at {Seconds:F1}s", import.Id, total, timer.Elapsed.TotalSeconds);
+        // step 1 of 2: progress = rows read
+        await ImportsById(import.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(i => i.Stage, ImportStage.Reading)
+            .SetProperty(i => i.ProcessedRows, 0), ct);
         await StageRows(import, members, report, ct);
+        _logger.LogInformation("Import {ImportId} phase 1 (read + validate + COPY) done at {Seconds:F1}s", import.Id, timer.Elapsed.TotalSeconds);
+        // step 2 of 2: progress = rows with a final class (invalid rows already are)
+        var invalidRows = report.InvalidRows;
+        await ImportsById(import.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(i => i.Stage, ImportStage.Classifying)
+            .SetProperty(i => i.ProcessedRows, invalidRows), ct);
         await ClassifyVotes(import, members, report, ct);
+        _logger.LogInformation("Import {ImportId} phase 2 (classify + write) done at {Seconds:F1}s", import.Id, timer.Elapsed.TotalSeconds);
 
         var earlier = await _db.Imports.AsNoTracking()
             .Where(i => i.FileSha256 == import.FileSha256 && i.Id < import.Id)
@@ -63,6 +78,7 @@ public class ImportProcessor
         var summaryJson = JsonSerializer.Serialize(report.Build(), ImportEndpoints.SummaryJson);
         await ImportsById(import.Id).ExecuteUpdateAsync(s => s
             .SetProperty(i => i.Status, ImportStatus.Completed)
+            .SetProperty(i => i.Stage, (ImportStage?)null)
             .SetProperty(i => i.CompletedAt, DateTime.UtcNow)
             .SetProperty(i => i.ProcessedRows, total)
             .SetProperty(i => i.Summary, summaryJson), ct);
@@ -73,12 +89,12 @@ public class ImportProcessor
 
     private IQueryable<Import> ImportsById(long id) => _db.Imports.Where(i => i.Id == id);
 
-    private async Task<int> CountDataLines(string storagePath, CancellationToken ct)
+    private Task<int> CountDataLines(string storagePath, CancellationToken ct)
     {
         using var reader = OpenText(storagePath);
         var lines = 0;
-        while (await reader.ReadLineAsync(ct) != null) lines++;
-        return Math.Max(0, lines - 1);   // minus the header
+        while (reader.ReadLine() != null) lines++;
+        return Task.FromResult(Math.Max(0, lines - 1));   // minus the header
     }
 
     // BOM detection off: we want to see the BOM so we can report it (ING-13)
@@ -92,7 +108,7 @@ public class ImportProcessor
         using var reader = OpenText(import.StoragePath);
 
         // checked at upload too; checked again because the file is what we actually process
-        var header = CsvFormat.CheckHeader(await reader.ReadLineAsync(ct) ?? "");
+        var header = CsvFormat.CheckHeader(reader.ReadLine() ?? "");
         if (!header.IsValid) throw new InvalidDataException(header.Error);
         if (header.HadBom) report.FileNotes.Add("UTF-8 byte order mark (BOM) at the start of the file was removed");
 
@@ -103,30 +119,33 @@ public class ImportProcessor
             var lineNo = 1;   // 1-based, header is line 1
             var endOfFile = false;
 
-            // COPY in chunks, so progress can be saved between chunks
+            // COPY in chunks, so progress can be saved between chunks.
+            // Synchronous on purpose: ~14 values per row x 1M rows; an await per value cost more than the work.
             while (!endOfFile)
             {
+                ct.ThrowIfCancellationRequested();
+                var readInChunk = 0;
                 var invalidInChunk = 0;
-                await using (var copy = await connection.BeginBinaryImportAsync(CopySql, ct))
+                using (var copy = connection.BeginBinaryImport(CopySql))
                 {
                     for (var n = 0; n < CopyChunkRows; n++)
                     {
-                        var line = await reader.ReadLineAsync(ct);
+                        var line = reader.ReadLine();
                         if (line == null) { endOfFile = true; break; }
                         lineNo++;
+                        readInChunk++;
 
                         var validation = RowValidator.Validate(lineNo, line, members);
                         if (!validation.IsValid) invalidInChunk++;
                         if (validation.Row?.NormalizationNote != null) report.NormalizedRows++;
-                        await WriteRow(copy, import.Id, lineNo, line, validation, ct);
+                        WriteRow(copy, import.Id, lineNo, line, validation);
                     }
-                    await copy.CompleteAsync(ct);
+                    copy.Complete();
                 }
 
-                // invalid rows are final now, so they count as processed
                 report.Count(RowClassification.Invalid, invalidInChunk);
                 await ImportsById(import.Id).ExecuteUpdateAsync(
-                    s => s.SetProperty(i => i.ProcessedRows, i => i.ProcessedRows + invalidInChunk), ct);
+                    s => s.SetProperty(i => i.ProcessedRows, i => i.ProcessedRows + readInChunk), ct);
             }
         }
         finally
@@ -135,8 +154,7 @@ public class ImportProcessor
         }
     }
 
-    private static async Task WriteRow(NpgsqlBinaryImporter copy, long importId, int lineNo, string line,
-        RowValidation validation, CancellationToken ct)
+    private static void WriteRow(NpgsqlBinaryImporter copy, long importId, int lineNo, string line, RowValidation validation)
     {
         // valid rows: the cleaned values (so grouping by vote id is exact); invalid rows: what the file had
         var row = validation.Row;
@@ -149,19 +167,22 @@ public class ImportProcessor
             }
             : Enumerable.Range(0, CsvFormat.Columns.Length).Select(i => raw?[i]).ToArray();
 
-        await copy.StartRowAsync(ct);
-        await copy.WriteAsync(importId, NpgsqlDbType.Bigint, ct);
-        await copy.WriteAsync(lineNo, NpgsqlDbType.Integer, ct);
-        await copy.WriteAsync(line, NpgsqlDbType.Text, ct);
+        copy.StartRow();
+        copy.Write(importId, NpgsqlDbType.Bigint);
+        copy.Write(lineNo, NpgsqlDbType.Integer);
+        copy.Write(line, NpgsqlDbType.Text);
         foreach (var field in fields)
-            await WriteText(copy, field, ct);
-        await WriteText(copy, validation.IsValid ? null : nameof(RowClassification.Invalid), ct);
-        await WriteText(copy, validation.IsValid ? null : validation.Reason, ct);
-        await WriteText(copy, row?.NormalizationNote, ct);
+            WriteText(copy, field);
+        WriteText(copy, validation.IsValid ? null : nameof(RowClassification.Invalid));
+        WriteText(copy, validation.IsValid ? null : validation.Reason);
+        WriteText(copy, row?.NormalizationNote);
     }
 
-    private static Task WriteText(NpgsqlBinaryImporter copy, string? value, CancellationToken ct) =>
-        value == null ? copy.WriteNullAsync(ct) : copy.WriteAsync(value, NpgsqlDbType.Text, ct);
+    private static void WriteText(NpgsqlBinaryImporter copy, string? value)
+    {
+        if (value == null) copy.WriteNull();
+        else copy.Write(value, NpgsqlDbType.Text);
+    }
 
     // --- phase 2 ---
 
@@ -184,6 +205,11 @@ public class ImportProcessor
     // One transaction per batch: approved data, conflicts, audit and row outcomes land together or not at all
     private async Task ClassifyBatch(Import import, string[] batch, MemberList members, ReportBuilder report, CancellationToken ct)
     {
+        // time per stage, logged once per batch: shows where a slow import spends its time
+        var stages = new List<string>();
+        var stageTimer = Stopwatch.StartNew();
+        void Stage(string name) { stages.Add($"{name} {stageTimer.Elapsed.TotalSeconds:F2}"); stageTimer.Restart(); }
+
         var rows = await _db.ImportRows.AsNoTracking()
             .Where(r => r.ImportId == import.Id && r.Classification == null && batch.Contains(r.AssemblyVoteId!))
             .Select(r => new { r.Id, r.LineNo, r.RawLine })
@@ -201,6 +227,7 @@ public class ImportProcessor
             .ToLookup(cv => cv.VoteId);
         var conflicts = (await _db.Conflicts.AsNoTracking().Where(c => voteDbIds.Contains(c.VoteId)).ToListAsync(ct))
             .ToLookup(c => c.VoteId);
+        Stage("load");
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         var now = DateTime.UtcNow;
@@ -236,9 +263,11 @@ public class ImportProcessor
             }
         }
         await _db.SaveChangesAsync(ct);   // new votes get their ids
+        Stage("classify+votes");
 
         // 2. add new ballots and open new conflicts. Never update an approved value (ING-08).
         var opened = new Dictionary<(string Vote, ConflictProposal Proposal), Conflict>();
+        var newBallots = new List<(long VoteId, string Country, string Ballot)>();
         foreach (var result in results)
         {
             if (!votes.TryGetValue(result.AssemblyVoteId, out var vote))
@@ -248,14 +277,7 @@ public class ImportProcessor
                 _db.AuditEvents.Add(Audit(import, vote.Id, "VoteCreated", null,
                     $"{vote.Title} (session {vote.Session}, {vote.VoteDate:yyyy-MM-dd})", now));
 
-            foreach (var row in result.BallotsToAdd)
-                _db.CountryVotes.Add(new CountryVote
-                {
-                    VoteId = vote.Id,
-                    CountryCode = row.CountryCode,
-                    Ballot = row.Ballot.ToString(),
-                    SourceImportId = import.Id,
-                });
+            newBallots.AddRange(result.BallotsToAdd.Select(row => (vote.Id, row.CountryCode, row.Ballot.ToString())));
             if (result.BallotsToAdd.Count > 0)
                 _db.AuditEvents.Add(Audit(import, vote.Id, "BallotsAdded", null, $"{result.BallotsToAdd.Count} ballots", now));
 
@@ -282,7 +304,25 @@ public class ImportProcessor
                 opened[(result.AssemblyVoteId, proposal)] = conflict;
             }
         }
+        // New ballots in bulk: up to ~30K per batch for the historic file. COPY on the same connection,
+        // so it is part of this batch's transaction (all or nothing). EF inserts were ~70% of the import time.
+        var connection = (NpgsqlConnection)_db.Database.GetDbConnection();
+        using (var copy = connection.BeginBinaryImport(
+                   "COPY country_votes (vote_id, country_code, ballot, source_import_id) FROM STDIN (FORMAT BINARY)"))
+        {
+            foreach (var (voteId, country, ballot) in newBallots)
+            {
+                copy.StartRow();
+                copy.Write(voteId, NpgsqlDbType.Bigint);
+                copy.Write(country, NpgsqlDbType.Varchar);
+                copy.Write(ballot, NpgsqlDbType.Varchar);
+                copy.Write(import.Id, NpgsqlDbType.Bigint);
+            }
+            copy.Complete();
+        }
+
         await _db.SaveChangesAsync(ct);   // new conflicts get their ids
+        Stage("ballots+conflicts");
 
         foreach (var ((voteKey, proposal), conflict) in opened)
         {
@@ -293,6 +333,7 @@ public class ImportProcessor
             _db.AuditEvents.Add(audit);
         }
         await _db.SaveChangesAsync(ct);
+        Stage("audit");
 
         // 3. row outcomes, in one statement for the whole batch
         var ids = new List<long>();
@@ -323,7 +364,11 @@ public class ImportProcessor
         await ImportsById(import.Id).ExecuteUpdateAsync(
             s => s.SetProperty(i => i.ProcessedRows, i => i.ProcessedRows + rows.Count), ct);
 
+        Stage("row outcomes");
         await tx.CommitAsync(ct);
+        Stage("commit");
+        _logger.LogInformation("Import {ImportId} batch: {Votes} votes, {Rows} rows; seconds: {Stages}",
+            import.Id, batch.Length, rows.Count, string.Join(", ", stages));
     }
 
     private static AuditEvent Audit(Import import, long voteId, string type, string? oldValue, string? newValue, DateTime at) => new()
@@ -351,6 +396,8 @@ public class ImportProcessor
         public List<string> FileNotes { get; } = new();
 
         public void Count(RowClassification c, int n) => _counts[c] += n;
+
+        public int InvalidRows => _counts[RowClassification.Invalid];
 
         public void Add(VoteResult result)
         {

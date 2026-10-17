@@ -271,6 +271,11 @@ namespace Meridian.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("processed_rows");
 
+                    b.Property<string>("Stage")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("stage");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -314,6 +319,8 @@ namespace Meridian.Api.Data.Migrations
 
                     b.ToTable("imports", null, t =>
                         {
+                            t.HasCheckConstraint("ck_imports_stage", "stage IN ('Reading','Classifying')");
+
                             t.HasCheckConstraint("ck_imports_status", "status IN ('Queued','Running','Completed','Failed')");
                         });
                 });
@@ -558,9 +565,6 @@ namespace Meridian.Api.Data.Migrations
 
                     b.HasKey("SnapshotId", "VoteId", "CountryCode")
                         .HasName("pk_snapshot_inputs");
-
-                    b.HasIndex("VoteId")
-                        .HasDatabaseName("ix_snapshot_inputs_vote_id");
 
                     b.ToTable("snapshot_inputs", null, t =>
                         {
@@ -864,23 +868,6 @@ namespace Meridian.Api.Data.Migrations
                         .HasForeignKey("PublishedBy")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_snapshots_users_published_by");
-                });
-
-            modelBuilder.Entity("Meridian.Api.Data.SnapshotInput", b =>
-                {
-                    b.HasOne("Meridian.Api.Data.Snapshot", null)
-                        .WithMany()
-                        .HasForeignKey("SnapshotId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_snapshot_inputs_snapshots_snapshot_id");
-
-                    b.HasOne("Meridian.Api.Data.Vote", null)
-                        .WithMany()
-                        .HasForeignKey("VoteId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_snapshot_inputs_votes_vote_id");
                 });
 
             modelBuilder.Entity("Meridian.Api.Data.SnapshotScore", b =>

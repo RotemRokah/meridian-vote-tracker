@@ -17,7 +17,10 @@ namespace Meridian.Tests.Integration;
 // The API applies migrations and seeds on startup, and runs the import worker, exactly like in docker compose.
 public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine").Build();
+    // same PostgreSQL settings as docker-compose.yml, so volume tests measure what reviewers run
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithCommand("-c", "max_wal_size=4GB", "-c", "shared_buffers=512MB")
+        .Build();
     private readonly string _storage = Path.Combine(Path.GetTempPath(), "meridian-tests", Guid.NewGuid().ToString("N"));
 
     public string ConnectionString => _postgres.GetConnectionString();
@@ -57,12 +60,12 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     // Upload a CSV and wait until the worker is done with it
-    public async Task<ImportDetailsDto> ImportAndWait(HttpClient client, string fileName, byte[] content)
+    public async Task<ImportDetailsDto> ImportAndWait(HttpClient client, string fileName, byte[] content, TimeSpan? timeout = null)
     {
         var response = await Upload(client, fileName, content);
         response.EnsureSuccessStatusCode();
         var queued = (await response.Content.ReadFromJsonAsync<ImportDto>(Json))!;
-        return await WaitForImport(client, queued.Id);
+        return await WaitForImport(client, queued.Id, timeout);
     }
 
     public static Task<HttpResponseMessage> Upload(HttpClient client, string fileName, byte[] content)
@@ -73,16 +76,16 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return client.PostAsync("/api/imports", form);
     }
 
-    public static async Task<ImportDetailsDto> WaitForImport(HttpClient client, long id)
+    public static async Task<ImportDetailsDto> WaitForImport(HttpClient client, long id, TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(2);
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromMinutes(2));
         while (true)
         {
             var details = (await client.GetFromJsonAsync<ImportDetailsDto>($"/api/imports/{id}", Json))!;
             if (details.Import.Status is ImportStatus.Completed or ImportStatus.Failed)
                 return details;
             if (DateTime.UtcNow > deadline)
-                throw new TimeoutException($"Import {id} still {details.Import.Status} after 2 minutes");
+                throw new TimeoutException($"Import {id} still {details.Import.Status} at the deadline");
             await Task.Delay(200);
         }
     }

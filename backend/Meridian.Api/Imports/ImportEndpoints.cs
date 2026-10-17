@@ -119,6 +119,6 @@ public static class ImportEndpoints
     private static IResult FileError(string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { ["file"] = new[] { message } });
 
-    private static ImportDto ToDto(Import i) => new(i.Id, i.FileName, i.UploadedBy, i.UploadedAt, i.Status,
+    private static ImportDto ToDto(Import i) => new(i.Id, i.FileName, i.UploadedBy, i.UploadedAt, i.Status, i.Stage,
         i.TotalRows, i.ProcessedRows, i.StartedAt, i.CompletedAt, i.Error);
 }

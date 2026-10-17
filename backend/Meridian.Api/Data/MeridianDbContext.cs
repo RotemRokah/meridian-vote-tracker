@@ -44,6 +44,7 @@ public class MeridianDbContext : DbContext
         {
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UploadedBy).OnDelete(DeleteBehavior.Restrict);
             EnumAsText(e, x => x.Status, "status");
+            EnumAsText(e, x => x.Stage, "stage");
             e.Property(x => x.Summary).HasColumnType("jsonb");
             // the worker picks the oldest queued import
             e.HasIndex(x => new { x.Status, x.UploadedAt });
@@ -139,8 +140,10 @@ public class MeridianDbContext : DbContext
             e.HasKey(x => new { x.SnapshotId, x.VoteId, x.CountryCode });
             e.Property(x => x.CountryCode).HasMaxLength(3);
             e.Property(x => x.Ballot).HasMaxLength(1);
-            e.HasOne<Snapshot>().WithMany().HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne<Vote>().WithMany().HasForeignKey(x => x.VoteId).OnDelete(DeleteBehavior.Restrict);
+            // No foreign keys here, on purpose (step 9): a full-history snapshot inserts ~1M rows and the
+            // two per-row FK checks took 120 of 128 seconds. The rows are copied in one statement from
+            // country_votes (already FK-checked), and a trigger forbids any later change, so the FKs added
+            // no protection. Every business table keeps its FKs.
             EnumAsText(e, x => x.Stance, "stance");
             e.ToTable(t =>
             {
