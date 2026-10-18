@@ -7,6 +7,7 @@ using Meridian.Api.Imports;
 using Meridian.Api.Snapshots;
 using Meridian.Api.Votes;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using static Meridian.Tests.Domain.TestData;
 
 namespace Meridian.Tests.Integration;
@@ -277,6 +278,28 @@ public class SnapshotTests
         (await _lena.PostAsync($"/api/snapshots/{id}/unpublish", null)).EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.Conflict, (await _lena.PostAsync($"/api/snapshots/{id}/unpublish", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await _dana.PostAsync($"/api/snapshots/{id}/unpublish", null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Correlation_id_of_the_request_is_stored_on_the_snapshot_and_in_its_worker_logs()
+    {
+        await Upload(Line(Vote(1), "BRA", "Y", date: Date()));
+        await SetPosition(Vote(1), "For", 3);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/snapshots") { Content = JsonContent.Create(ByList("corr", Vote(1))) };
+        var correlationId = $"snap-corr-{_p}";
+        request.Headers.Add("X-Correlation-ID", correlationId);
+        var queued = (await (await _dana.SendAsync(request)).Content.ReadFromJsonAsync<SnapshotDto>(ApiFactory.Json))!;
+
+        await using (var db = _factory.NewDbContext())
+            Assert.Equal(correlationId, (await db.Snapshots.SingleAsync(s => s.Id == queued.Id)).CorrelationId);
+
+        // the worker restores it: in the log scope and as a parameter (the field Application Insights gets)
+        var deadline = DateTime.UtcNow.AddMinutes(1);
+        while (!_factory.Logs.Lines.Any(l => l.Contains($"Snapshot {queued.Id} computed")) && DateTime.UtcNow < deadline)
+            await Task.Delay(200);
+        Assert.Contains(_factory.Logs.Lines, l => l.Contains($"CorrelationId:{correlationId}")
+            && l.Contains($"Snapshot {queued.Id} computed") && l.Contains($"correlation {correlationId}"));
     }
 
     [Fact]

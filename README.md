@@ -125,7 +125,12 @@ cd frontend && npm ci && npm test
 - Backend: unit tests for every ingestion rule and the worked example, plus integration tests against real PostgreSQL
   (the 2024 files end to end, conflict and position races, snapshot immutability, 403s, Blob storage on Azurite).
 - `HistoricImportTests` runs only when `data/assembly_historic.csv` exists (or `MERIDIAN_HISTORIC_CSV` points to it);
-  otherwise it is reported as Skipped. It takes about 7 minutes.
+  otherwise it is reported as Skipped. Its import must finish within 8 minutes; it was measured at 422 s. On a busy or
+  slow machine it can go over that budget; then run it alone:
+
+  ```bash
+  dotnet test backend/Meridian.sln --filter HistoricImportTests
+  ```
 - `AzureBlobLiveTests` runs only with `MERIDIAN_AZURE_BLOB_ACCOUNT_URL` set and an `az login` session (see below).
 - `npm test` clears Vitest's cache first: without that, a change to a component's inline template could run against a
   stale build.

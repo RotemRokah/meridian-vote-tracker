@@ -55,7 +55,7 @@ public static class SnapshotEndpoints
 
     // SNP-01 + POS-04. Resolves the selection now, then queues the computation (202).
     private static async Task<IResult> Create(CreateSnapshotRequest request, MeridianDbContext db,
-        ClaimsPrincipal user, CancellationToken ct)
+        ClaimsPrincipal user, HttpContext http, CancellationToken ct)
     {
         var errors = new Dictionary<string, string[]>();
         var requested = (request.VoteIds ?? new()).Select(v => v.Trim()).Where(v => v != "").Distinct().ToList();
@@ -138,6 +138,7 @@ public static class SnapshotEndpoints
             Status = SnapshotStatus.Queued,
             CreatedBy = user.FindFirstValue(ClaimTypes.NameIdentifier)!,
             CreatedAt = DateTime.UtcNow,
+            CorrelationId = http.TraceIdentifier,   // the worker logs under the same id
         };
         db.Snapshots.Add(snapshot);
         await db.SaveChangesAsync(ct);

@@ -60,6 +60,9 @@ public class SnapshotCalculator
         var snapshot = await _db.Snapshots.AsNoTracking().SingleAsync(s => s.Id == snapshotId, ct);
         var rules = JsonSerializer.Deserialize<SnapshotRules>(snapshot.Rules, SnapshotEndpoints.Json)!;
         var timer = System.Diagnostics.Stopwatch.StartNew();
+        // CorrelationId as a message parameter, not only in the scope: Application Insights exports parameters as fields
+        _logger.LogInformation("Snapshot {SnapshotId} started: {Votes} votes, correlation {CorrelationId}",
+            snapshotId, rules.VoteIds.Count, snapshot.CorrelationId);
 
         // Npgsql's default command timeout is 30 s; copying ~1M country-votes can take longer.
         // Background job, nobody is waiting on a request: allow minutes.
@@ -79,7 +82,7 @@ public class SnapshotCalculator
             .SetProperty(x => x.CompletedAt, DateTime.UtcNow), ct);
 
         await tx.CommitAsync(ct);
-        _logger.LogInformation("Snapshot {SnapshotId} computed in {Seconds:F1}s: {Inputs} country-votes, {Countries} countries",
-            snapshotId, timer.Elapsed.TotalSeconds, inputs, countries);
+        _logger.LogInformation("Snapshot {SnapshotId} computed in {Seconds:F1}s: {Inputs} country-votes, {Countries} countries, correlation {CorrelationId}",
+            snapshotId, timer.Elapsed.TotalSeconds, inputs, countries, snapshot.CorrelationId);
     }
 }

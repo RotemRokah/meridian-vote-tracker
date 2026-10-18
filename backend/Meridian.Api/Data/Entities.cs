@@ -147,6 +147,7 @@ public class Snapshot
     public bool IsPublished { get; set; }
     public string? PublishedBy { get; set; }
     public DateTime? PublishedAt { get; set; }
+    public string? CorrelationId { get; set; }     // of the create request, restored by the worker
 }
 
 // Frozen copy of exactly the data a snapshot used (SNP-04). Insert only.

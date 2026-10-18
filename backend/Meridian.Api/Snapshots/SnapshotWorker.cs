@@ -31,7 +31,7 @@ public class SnapshotWorker : BackgroundService
                 if (next == null)
                     await Task.Delay(IdleDelay, stoppingToken);
                 else
-                    await Run(next.Value, stoppingToken);
+                    await Run(next, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -45,21 +45,26 @@ public class SnapshotWorker : BackgroundService
         }
     }
 
-    private async Task<long?> ClaimNext(CancellationToken ct)
+    private async Task<ClaimedSnapshot?> ClaimNext(CancellationToken ct)
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MeridianDbContext>();
-        var claimed = await db.Database.SqlQuery<long>($@"
+        var claimed = await db.Database.SqlQuery<ClaimedSnapshot>($@"
             UPDATE snapshots SET status = 'Running'
             WHERE id = (SELECT id FROM snapshots WHERE status = 'Queued'
                         ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED)
-            RETURNING id AS ""Value""").ToListAsync(ct);
-        return claimed.Count == 0 ? null : claimed[0];
+            RETURNING id, correlation_id").ToListAsync(ct);
+        return claimed.FirstOrDefault();
     }
 
-    private async Task Run(long snapshotId, CancellationToken ct)
+    private record ClaimedSnapshot(long Id, string? CorrelationId);
+
+    private async Task Run(ClaimedSnapshot snapshot, CancellationToken ct)
     {
-        using var logScope = _logger.BeginScope("SnapshotId:{SnapshotId}", snapshotId);
+        var snapshotId = snapshot.Id;
+        // same correlation id as the create request, so its logs can be followed end to end
+        using var logScope = _logger.BeginScope("CorrelationId:{CorrelationId} SnapshotId:{SnapshotId}",
+            snapshot.CorrelationId ?? "", snapshotId);
         try
         {
             using var scope = _scopes.CreateScope();
