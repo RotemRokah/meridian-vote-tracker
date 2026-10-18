@@ -20,12 +20,12 @@ public class DocumentAnalysisException : Exception
 // REST call, no SDK: one POST, then poll the operation until it succeeds, fails or times out (PDF-06).
 public class AzureDocumentAnalyzer : IDocumentAnalyzer
 {
-    public static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);   // a job never hangs forever
     private const string ApiVersion = "2024-11-30";
 
     private readonly HttpClient _http;
     private readonly string? _endpoint;
     private readonly string? _key;
+    private readonly TimeSpan _timeout;   // a job never hangs forever (PDF-06)
     private readonly ILogger<AzureDocumentAnalyzer> _logger;
 
     public AzureDocumentAnalyzer(HttpClient http, IConfiguration config, ILogger<AzureDocumentAnalyzer> logger)
@@ -34,6 +34,7 @@ public class AzureDocumentAnalyzer : IDocumentAnalyzer
         _http.Timeout = TimeSpan.FromSeconds(60);   // per request
         _endpoint = config["DocumentIntelligence:Endpoint"]?.TrimEnd('/');
         _key = config["DocumentIntelligence:Key"];
+        _timeout = TimeSpan.FromSeconds(config.GetValue("DocumentIntelligence:TimeoutSeconds", 120));
         _logger = logger;
     }
 
@@ -43,7 +44,7 @@ public class AzureDocumentAnalyzer : IDocumentAnalyzer
     {
         if (!IsConfigured) throw new DocumentAnalysisException("Document Intelligence is not configured.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(Timeout);
+        timeout.CancelAfter(_timeout);
         try
         {
             var post = new HttpRequestMessage(HttpMethod.Post,
@@ -76,7 +77,7 @@ public class AzureDocumentAnalyzer : IDocumentAnalyzer
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new DocumentAnalysisException($"Document Intelligence did not answer within {Timeout.TotalMinutes:0} minutes.");
+            throw new DocumentAnalysisException($"Document Intelligence did not answer within {_timeout.TotalSeconds:0} seconds.");
         }
         catch (HttpRequestException ex)
         {

@@ -100,12 +100,12 @@ public class PdfExtractionTests
     [Fact]
     public async Task AI_failure_is_shown_and_retry_reads_it_again()
     {
-        _factory.Analyzer.Answers.Enqueue(() => throw new DocumentAnalysisException("Document Intelligence did not answer within 2 minutes."));
+        _factory.Analyzer.Answers.Enqueue(() => throw new DocumentAnalysisException("Document Intelligence did not answer within 120 seconds."));
         var queued = (await (await Upload(_dana, FakePdf)).Content.ReadFromJsonAsync<PdfExtractionDto>(ApiFactory.Json))!;
 
         var failed = await WaitWhileBusy(_dana, queued.Id);
         Assert.Equal(PdfExtractionStatus.Failed, failed.Extraction.Status);
-        Assert.Equal("Document Intelligence did not answer within 2 minutes.", failed.Extraction.Error);
+        Assert.Equal("Document Intelligence did not answer within 120 seconds.", failed.Extraction.Error);
 
         _factory.Analyzer.Answers.Enqueue(() => Layout("MA_2011_042.layout.json"));
         Assert.Equal(HttpStatusCode.Accepted, (await _dana.PostAsync($"/api/pdf-extractions/{queued.Id}/retry", null)).StatusCode);
