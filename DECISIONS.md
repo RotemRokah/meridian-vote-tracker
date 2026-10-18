@@ -57,9 +57,9 @@ Off by default; switched on by `.env` only.
 
 ## 7. Before production
 
-**Import speed** (~5 min vs a 3-min target): an unlogged staging table (no crash log, faster writes). **Keyset
-pagination** ("rows after line N"): `OFFSET` reads every skipped row, so page 5,000 takes 2.7 s. Real sign-in instead
-of `X-User-Id`; a worker lease (a claim that expires) for several API instances.
+**Import speed** (~5 min, target 3): an unlogged (no crash log) staging table. **Keyset pagination**: `OFFSET` reads
+every skipped row (page 5,000: 2.7 s). **A mistaken decision can't be fixed today:** add an Admin Reopen/Override with
+a required comment and an audit event (only a person, on record).
 
 ## 8. Next phase with 4 developers
 
