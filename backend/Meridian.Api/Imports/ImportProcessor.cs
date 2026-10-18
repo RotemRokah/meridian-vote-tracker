@@ -44,7 +44,7 @@ public class ImportProcessor
 
         var import = await _db.Imports.AsNoTracking().SingleAsync(i => i.Id == importId, ct);
         var timer = Stopwatch.StartNew();
-        _logger.LogInformation("Import {ImportId} started: {FileName}", import.Id, import.FileName);
+        _logger.LogInformation("Import {ImportId} started: {FileName}, correlation {CorrelationId}", import.Id, import.FileName, import.CorrelationId);
 
         var members = new MemberList(await _db.MemberStates.AsNoTracking()
             .Select(m => new MembershipPeriod(m.CountryCode, m.MemberFrom, m.MemberTo))
@@ -83,8 +83,8 @@ public class ImportProcessor
             .SetProperty(i => i.ProcessedRows, total)
             .SetProperty(i => i.Summary, summaryJson), ct);
 
-        _logger.LogInformation("Import {ImportId} completed in {Seconds:F1}s: {Rows} rows, {NewConflicts} new conflicts",
-            import.Id, timer.Elapsed.TotalSeconds, total, report.NewConflicts);
+        _logger.LogInformation("Import {ImportId} completed in {Seconds:F1}s: {Rows} rows, {NewConflicts} new conflicts, correlation {CorrelationId}",
+            import.Id, timer.Elapsed.TotalSeconds, total, report.NewConflicts, import.CorrelationId);
     }
 
     private IQueryable<Import> ImportsById(long id) => _db.Imports.Where(i => i.Id == id);

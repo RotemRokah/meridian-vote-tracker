@@ -66,6 +66,27 @@ Before step 9 the import took 610 s with 1.29 GB of memory; what changed and why
 In the regular database a full-history snapshot needs every vote to have a position (set by an Admin);
 the volume test sets test positions in its own throwaway database.
 
+## Azure (optional)
+
+Everything runs locally by default. To use Azure, put these in `.env` (never in a committed file) and run
+`docker compose up -d --build api`:
+
+| Setting | Effect |
+|---|---|
+| `STORAGE_PROVIDER=AzureBlob` + `AZURE_STORAGE_ACCOUNT_URL` | Uploaded files go to Azure Blob Storage (container `imports`, created on first start) through Entra ID (`DefaultAzureCredential`: Managed Identity in Azure, `az login` on a developer machine), no key. Needs *Storage Blob Data Contributor*. |
+| `STORAGE_PROVIDER=AzureBlob` + `AZURE_STORAGE_CONNECTION_STRING` | Same, with an account key (Azurite, or accounts that allow keys). A missing or wrong setting stops the API at startup with a clear message. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Logs, HTTP requests and PostgreSQL calls are sent to Application Insights. Each log line carries `CorrelationId` as a field, so one upload can be followed from the browser request to the background import. |
+
+The Blob store is tested against Azurite (the Azure Storage emulator) in `BlobStorageTests`, so no Azure account is needed
+to run the tests. `AzureBlobLiveTests` checks a real account through Entra ID once you are signed in with `az login`:
+
+```bash
+MERIDIAN_AZURE_BLOB_ACCOUNT_URL=https://<account>.blob.core.windows.net dotnet test backend/Meridian.sln --filter AzureBlobLiveTests
+```
+
+Inside docker on a laptop there is no Entra ID sign-in, so keep `STORAGE_PROVIDER=Local` there. What was verified
+against Azure and what only against Azurite is in `DECISIONS.md`.
+
 ## The UI
 
 http://localhost:4200: **Imports** (upload, live progress, reports), **Review** (conflicts), **Votes** (details, timeline,

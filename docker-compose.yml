@@ -24,6 +24,11 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB:-meridian};Username=${POSTGRES_USER:-meridian};Password=${POSTGRES_PASSWORD}
       Storage__Path: /app/uploads
+      # Azure (optional, step 11): empty = off. Values come from .env, never from this file.
+      Storage__Provider: ${STORAGE_PROVIDER:-Local}
+      Storage__AzureBlob__AccountUrl: ${AZURE_STORAGE_ACCOUNT_URL:-}
+      Storage__AzureBlob__ConnectionString: ${AZURE_STORAGE_CONNECTION_STRING:-}
+      APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
       # workstation GC: much lower memory in a container than the server GC default
       DOTNET_gcServer: "0"
     ports:

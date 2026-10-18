@@ -30,7 +30,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public async Task InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         await _postgres.StartAsync();
         _ = Services; // start the app now: runs migrations + seed once for all tests
@@ -90,7 +90,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         }
     }
 
-    public new async Task DisposeAsync()
+    public new virtual async Task DisposeAsync()
     {
         await base.DisposeAsync();
         await _postgres.DisposeAsync();

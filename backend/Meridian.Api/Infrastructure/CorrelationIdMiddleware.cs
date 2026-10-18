@@ -25,12 +25,21 @@ public class CorrelationIdMiddleware
         // TraceIdentifier is what ProblemDetails and ASP.NET logs use as the request id
         context.TraceIdentifier = correlationId;
         context.Response.Headers[HeaderName] = correlationId;
+        // on the request's telemetry too: Application Insights shows it as customDimensions.CorrelationId
+        System.Diagnostics.Activity.Current?.SetTag("CorrelationId", correlationId);
 
         // a message template (not a Dictionary): the console prints it as "CorrelationId:abc",
         // and structured log sinks still get CorrelationId as a field
         using (_logger.BeginScope("CorrelationId:{CorrelationId}", correlationId))
         {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             await _next(context);
+            // one line per request: every request can be found by its correlation id, not only the ones
+            // that happen to log something. CorrelationId is a message parameter on purpose: exporters
+            // always send parameters as properties; scopes depend on exporter settings (they didn't arrive).
+            _logger.LogInformation("HTTP {Method} {Path} responded {StatusCode} in {ElapsedMs:F0} ms, correlation {CorrelationId}",
+                context.Request.Method, context.Request.Path.Value, context.Response.StatusCode,
+                System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds, correlationId);
         }
     }
 }

@@ -9,9 +9,13 @@ using Meridian.Api.Snapshots;
 using Meridian.Api.Storage;
 using Meridian.Api.Votes;
 using Microsoft.AspNetCore.Authentication;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Npgsql;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +26,14 @@ builder.Logging.AddSimpleConsole(o =>
     o.SingleLine = true;
     o.TimestampFormat = "HH:mm:ss ";
 });
+
+// Azure Monitor / Application Insights (step 11): only when a connection string is configured.
+// Sends logs (the CorrelationId scope becomes a searchable field), HTTP requests and PostgreSQL calls.
+if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+{
+    builder.Services.AddOpenTelemetry().UseAzureMonitor().WithTracing(t => t.AddNpgsql());
+    builder.Services.Configure<OpenTelemetryLoggerOptions>(o => o.IncludeScopes = true);
+}
 
 // Connection string comes from config: env var ConnectionStrings__Default (docker)
 // or dotnet user-secrets (local). Read when the DbContext is created, so tests can override it.
@@ -34,7 +46,7 @@ builder.Services.AddAuthentication(UserIdAuthenticationHandler.SchemeName)
 builder.Services.AddAuthorization(Policies.Add);
 
 // Imports: file store, background worker, and room for large uploads (historic file is ~103 MB)
-builder.Services.AddSingleton<IFileStore, LocalFileStore>();
+builder.Services.AddSingleton<IFileStore>(FileStores.Create);   // local disk or Azure Blob, from config
 builder.Services.AddScoped<ImportProcessor>();
 builder.Services.AddHostedService<ImportWorker>();
 
@@ -87,6 +99,9 @@ var app = builder.Build();
 if (string.IsNullOrWhiteSpace(app.Configuration.GetConnectionString("Default")))
     throw new InvalidOperationException(
         "Missing connection string 'ConnectionStrings:Default' (env var ConnectionStrings__Default or dotnet user-secrets).");
+
+// create the file store now: a wrong storage setting (e.g. AzureBlob without a connection string) stops startup here
+app.Services.GetRequiredService<IFileStore>();
 
 using (var scope = app.Services.CreateScope())
 {
