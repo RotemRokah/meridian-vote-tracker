@@ -53,7 +53,13 @@ Off by default; switched on by `.env` only.
 - **Not used:** Azure OpenAI for PDFs (non-deterministic, no per-cell confidence), Azure PostgreSQL (reviewers run
   everything locally), Cosmos DB (relational data), Key Vault (secret store; comes with Managed Identity).
 
-## 6. Bonus: PDF extraction: not built
+## 6. Bonus: PDF extraction
+
+**Document Intelligence (layout), not a language model (PDF-02):** it returns table cells and checkboxes with a
+confidence each; a language model can invent a ballot silently. A probe showed **unticked boxes always
+get confidence 0.10**, so confidence only means something for a ticked box. Flagged for review: 0 or 2+ ticks in a row,
+a tick under 0.8, an unknown or repeated code, counts that differ from the printed totals. **Quality:** hand-label the
+six sheets; measure wrong ballots, how many were flagged, and wrong ones *not* flagged (the dangerous one).
 
 ## 7. Before production
 
