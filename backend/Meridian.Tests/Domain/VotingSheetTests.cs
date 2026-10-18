@@ -85,6 +85,23 @@ public class VotingSheetTests
     }
 
     [Fact]
+    public void A_repeated_column_header_inside_the_table_is_not_a_country()
+    {
+        // the corrigendum's layout had "Code | Member state | YES | NO | ABST." as a data row
+        const string layout = """
+            {"content":"Recorded totals: Yes: 1 No: 0 Abstentions: 0 Not voting: 0",
+             "pages":[{"selectionMarks":[{"state":"selected","confidence":0.99,"span":{"offset":7}}]}],
+             "tables":[{"rowCount":3,"columnCount":5,"cells":[
+               {"rowIndex":0,"columnIndex":0,"content":"Code"},
+               {"rowIndex":1,"columnIndex":0,"content":"Code"},{"rowIndex":1,"columnIndex":1,"content":"Member state"},
+               {"rowIndex":2,"columnIndex":0,"content":"AFG"},{"rowIndex":2,"columnIndex":1,"content":"Afghanistan"},
+               {"rowIndex":2,"columnIndex":2,"content":":selected:","spans":[{"offset":7}]}]}]}
+            """;
+        var sheet = VotingSheetReader.Read(layout);
+        Assert.Equal(("AFG", "Y"), (Assert.Single(sheet.Rows).Code, sheet.Rows[0].Ballot));
+    }
+
+    [Fact]
     public void Missing_header_and_totals_are_flagged()
     {
         var empty = new VotingSheet(null, null, "sometime", "", new(), null, new());

@@ -74,6 +74,7 @@ public static class VotingSheetReader
             {
                 var code = Text(r, 0);
                 if (code == "" || code.StartsWith(":")) continue;   // empty rows at the end of the last page
+                if (code.Equals("Code", StringComparison.OrdinalIgnoreCase)) continue;   // a header row read as data (seen on the corrigendum)
                 var ticked = new List<(string Ballot, double Confidence)>();
                 for (var i = 0; i < 3; i++)
                 {
