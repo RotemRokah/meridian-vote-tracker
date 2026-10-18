@@ -59,7 +59,7 @@ Off by default; switched on by `.env` only.
 language model can invent a ballot silently. **Unticked boxes always get confidence 0.10**, so only a ticked box's
 confidence counts. Flagged: 0 or 2+ ticks, a tick under 0.8, bad or repeated codes, totals mismatch.
 **Built:** upload, background read (2-min timeout, retry), these checks, ballot edit, approve (a normal import named
-after the PDF, same rules as CSV), reject. Not built: editing codes or header. **Quality:** hand-label the six sheets;
+after the PDF, same rules as CSV), reject. Not built: editing codes or header, removing a row. **Quality:** hand-label the six sheets;
 count wrong ballots, and wrong ones *not* flagged.
 
 ## 7. Before production

@@ -68,17 +68,31 @@ public static class VotingSheetReader
                 continue;
             }
 
-            if (columns != 5) { issues.Add($"Unexpected table with {columns} columns was ignored"); continue; }
-
-            for (var r = 1; r < rowCount; r++)   // row 0: Code, Member state, YES, NO, ABST.
+            // find the columns by their header, not by position: a skewed scan can add an empty column
+            int Column(string header, int fallback)
             {
-                var code = Text(r, 0);
+                for (var c = 0; c < columns; c++)
+                    if (Text(0, c).StartsWith(header, StringComparison.OrdinalIgnoreCase)) return c;
+                return columns == 5 ? fallback : -1;
+            }
+            var codeCol = Column("Code", 0);
+            var nameCol = Column("Member", 1);
+            var ballotCols = new[] { Column("YES", 2), Column("NO", 3), Column("ABST", 4) };
+            if (codeCol < 0 || ballotCols.Any(c => c < 0))
+            {
+                issues.Add($"Unexpected table with {columns} columns was ignored");
+                continue;
+            }
+
+            for (var r = 1; r < rowCount; r++)   // row 0 is the header
+            {
+                var code = Text(r, codeCol);
                 if (code == "" || code.StartsWith(":")) continue;   // empty rows at the end of the last page
                 if (code.Equals("Code", StringComparison.OrdinalIgnoreCase)) continue;   // a header row read as data (seen on the corrigendum)
                 var ticked = new List<(string Ballot, double Confidence)>();
                 for (var i = 0; i < 3; i++)
                 {
-                    if (!cells.TryGetValue((r, 2 + i), out var cell) || cell.GetProperty("content").GetString() != ":selected:") continue;
+                    if (!cells.TryGetValue((r, ballotCols[i]), out var cell) || cell.GetProperty("content").GetString() != ":selected:") continue;
                     var offset = cell.GetProperty("spans")[0].GetProperty("offset").GetInt32();
                     ticked.Add((BallotColumns[i], markConfidence.GetValueOrDefault(offset, 0)));
                 }
@@ -88,7 +102,7 @@ public static class VotingSheetReader
                 if (ticked.Count == 0) ballot = "X";   // no tick: not voting
                 else if (ticked.Count == 1) { ballot = ticked[0].Ballot; confidence = ticked[0].Confidence; }
                 else { ballot = null; rowIssues.Add($"{ticked.Count} boxes ticked ({string.Join(", ", ticked.Select(t => t.Ballot))})"); }
-                rows.Add(new SheetRow(code, Text(r, 1).TrimEnd(',', '.'), ballot, confidence, rowIssues));
+                rows.Add(new SheetRow(code, nameCol < 0 ? "" : Text(r, nameCol).TrimEnd(',', '.'), ballot, confidence, rowIssues));
             }
         }
 

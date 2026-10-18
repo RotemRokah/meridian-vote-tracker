@@ -112,6 +112,21 @@ public class VotingSheetTests
     }
 
     [Fact]
+    public void A_skewed_table_with_an_extra_empty_column_is_read_by_its_headers()
+    {
+        // MA_2013_088: one country table came back as Code | Member state | (empty) | YES | NO | ABST.
+        var sheet = VotingSheetReader.Read(Fixture("MA_2013_088.layout.json"));
+        var checkedSheet = VotingSheetReader.Validate(sheet, MembersOf(sheet));
+
+        Assert.DoesNotContain(sheet.Issues, i => i.StartsWith("Unexpected table"));
+        Assert.Equal(149, sheet.Rows.Count);   // was 109 when that table was skipped; 148 on paper + PAN read twice
+        Assert.Equal("Y", sheet.Rows.Single(r => r.Code == "DJI").Ballot);
+        // PAN is read on both pages: flagged, and the counts no longer match, so approval stays blocked
+        Assert.Contains(checkedSheet.Rows.Where(r => r.Code == "PAN").Last().Issues, i => i.Contains("appears more than once"));
+        Assert.Contains("counts differ from the printed totals", VotingSheetReader.BlockingProblems(checkedSheet));
+    }
+
+    [Fact]
     public void Missing_header_and_totals_are_flagged()
     {
         var empty = new VotingSheet(null, null, "sometime", "", new(), null, new());
