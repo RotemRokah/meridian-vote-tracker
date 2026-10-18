@@ -112,9 +112,10 @@ public static class VotingSheetReader
             DateTimeStyles.None, out var d) ? d.ToString("yyyy-MM-dd") : null;
 
     // PDF-03: the model output is untrusted. Checks structure, codes, duplicates, ballots and the printed totals.
+    // Can run again after an edit: it keeps only what the reader or a person noted, and redoes its own checks.
     public static VotingSheet Validate(VotingSheet sheet, MemberList members)
     {
-        var issues = new List<string>(sheet.Issues);
+        var issues = sheet.Issues.Where(IsReadNote).ToList();
         if (sheet.AssemblyVoteId == null || !Regex.IsMatch(sheet.AssemblyVoteId, @"^MA/\d{4}/\d{3}$"))
             issues.Add($"Vote number '{sheet.AssemblyVoteId}' is not in the form MA/yyyy/nnn");
         if (sheet.Session == null) issues.Add("Session is missing or not a number");
@@ -126,7 +127,7 @@ public static class VotingSheetReader
         var rows = new List<SheetRow>();
         foreach (var row in sheet.Rows)
         {
-            var rowIssues = new List<string>(row.Issues);
+            var rowIssues = row.Issues.Where(IsReadNote).ToList();
             if (row.Confidence < LowConfidence) rowIssues.Add($"Low confidence {row.Confidence:0.00} on the ticked box");
             if (!members.IsKnown(row.Code)) rowIssues.Add($"Unknown country code '{row.Code}'");
             if (!seen.Add(row.Code)) rowIssues.Add($"Country '{row.Code}' appears more than once");
@@ -148,6 +149,10 @@ public static class VotingSheetReader
 
         return sheet with { Rows = rows, Issues = issues };
     }
+
+    // Notes from reading the scan or from a person's edit; everything else is recomputed by Validate
+    private static bool IsReadNote(string issue) =>
+        issue.Contains("boxes ticked") || issue.StartsWith("Edited by") || issue.Contains("removed") || issue.StartsWith("Unexpected table");
 
     // Approval is blocked while a row has no usable ballot or the header can't be ingested.
     public static List<string> BlockingProblems(VotingSheet sheet)

@@ -16,6 +16,8 @@ public record PdfExtractionDetailsDto(PdfExtractionDto Extraction, VotingSheet? 
 
 public record PdfFeatureDto(bool Enabled);
 
+public record EditBallotRequest(string? Ballot);
+
 public static class PdfEndpoints
 {
     public const long MaxPdfBytes = 20 * 1024 * 1024;
@@ -46,6 +48,12 @@ public static class PdfEndpoints
 
         pdfs.MapPost("/{id:long}/reject", Reject).WithName("RejectPdfExtraction")
             .Produces<PdfExtractionDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        pdfs.MapPut("/{id:long}/rows/{code}", EditBallot).WithName("EditPdfBallot")
+            .Produces<PdfExtractionDetailsDto>()
+            .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
@@ -91,6 +99,39 @@ public static class PdfEndpoints
         if (claimed == 0) return NotReviewable(await db.PdfExtractions.AsNoTracking().SingleAsync(e => e.Id == id, ct));
         await tx.CommitAsync(ct);
         return Results.Ok(ToDto(await db.PdfExtractions.AsNoTracking().SingleAsync(e => e.Id == id, ct)));
+    }
+
+    // PDF-04: the analyst corrects a ballot before approving. The edit is kept on the row, so it stays visible.
+    private static async Task<IResult> EditBallot(long id, string code, EditBallotRequest request, MeridianDbContext db,
+        ClaimsPrincipal user, CancellationToken ct)
+    {
+        var ballot = request.Ballot?.Trim().ToUpperInvariant();
+        if (ballot is not ("Y" or "N" or "A" or "X"))
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["ballot"] = new[] { "Ballot must be Y, N, A or X." } });
+
+        var x = await db.PdfExtractions.SingleOrDefaultAsync(e => e.Id == id, ct);
+        if (x == null) return NotFound(id);
+        if (x.Status != PdfExtractionStatus.ReadyForReview) return NotReviewable(x);
+        var sheet = SheetOf(x)!;
+        var row = sheet.Rows.FirstOrDefault(r => r.Code == code.ToUpperInvariant());
+        if (row == null) return Results.Problem(statusCode: 404, title: "Row not found", detail: $"No row for {code} on this sheet.");
+
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        // a person decided: the tick-based notes no longer apply; what the scan said stays visible in the note
+        var edited = row with
+        {
+            Ballot = ballot, Confidence = null,
+            Issues = new() { $"Edited by {userId}: {row.Ballot ?? "unreadable"} → {ballot}" },
+        };
+        var members = new Meridian.Domain.Ingestion.MemberList(await db.MemberStates.AsNoTracking()
+            .Select(m => new Meridian.Domain.Ingestion.MembershipPeriod(m.CountryCode, m.MemberFrom, m.MemberTo)).ToListAsync(ct));
+        // all checks run again: totals, duplicates, codes
+        var revalidated = VotingSheetReader.Validate(
+            sheet with { Rows = sheet.Rows.Select(r => ReferenceEquals(r, row) ? edited : r).ToList() }, members);
+
+        x.Sheet = JsonSerializer.Serialize(revalidated, PdfExtractionWorker.Json);
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new PdfExtractionDetailsDto(ToDto(x), revalidated, VotingSheetReader.BlockingProblems(revalidated)));
     }
 
     private static async Task<IResult> Reject(long id, MeridianDbContext db, ClaimsPrincipal user, CancellationToken ct)

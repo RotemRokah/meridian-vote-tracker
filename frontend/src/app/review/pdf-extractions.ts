@@ -58,8 +58,16 @@ import { pollWhile } from '../core/poll';
               @for (r of (onlyFlagged ? flagged() : s.rows); track r.code + $index) {
                 <tr [class.flagged]="r.issues.length > 0" [attr.data-testid]="'row-' + r.code">
                   <td>{{ r.code }}</td><td>{{ r.name }}</td>
-                  <td><strong>{{ r.ballot ?? '?' }}</strong></td>
-                  <td>{{ r.confidence === undefined ? '' : (r.confidence * 100).toFixed(0) + '%' }}</td>
+                  <td>
+                    @if (d.extraction.status === 'ReadyForReview') {
+                      <!-- PDF-04: the analyst corrects a value; the API re-runs every check -->
+                      <select [ngModel]="r.ballot ?? ''" (ngModelChange)="edit(r.code, $event)" [attr.aria-label]="'Ballot of ' + r.code">
+                        <option value="" disabled>?</option>
+                        <option value="Y">Y</option><option value="N">N</option><option value="A">A</option><option value="X">X</option>
+                      </select>
+                    } @else { <strong>{{ r.ballot }}</strong> }
+                  </td>
+                  <td>{{ r.confidence == null ? '' : (r.confidence * 100).toFixed(0) + '%' }}</td>
                   <td>@for (i of r.issues; track $index) { <div class="problem">⚠ {{ i }}</div> }</td>
                 </tr>
               }
@@ -133,6 +141,15 @@ export class PdfExtractions {
 
   count(ballot: string): number {
     return this.details()?.sheet?.rows.filter((r) => r.ballot === ballot).length ?? 0;
+  }
+
+  edit(code: string, ballot: string): void {
+    const id = this.details()!.extraction.id;
+    this.decisionProblem.set(null);
+    this.api.editPdfBallot(id, code, { ballot }).subscribe({
+      next: (d) => this.details.set(d),
+      error: (err) => { this.decisionProblem.set(toProblem(err)); this.open(id); },
+    });
   }
 
   decide(action: 'approve' | 'reject'): void {

@@ -137,15 +137,17 @@ public class PdfExtractionTests
     [Fact]
     public async Task Approved_sheet_is_ingested_like_a_csv_and_a_second_copy_changes_nothing()
     {
+        // the tests share one database: another test may already have brought this sheet in
         var first = await ApproveAndImport(await ReadyForReview("MA_2011_042.layout.json"));
         Assert.Equal((ImportStatus.Completed, "MA_2011_042.pdf"), (first.Import.Status, first.Import.FileName));
         Assert.Equal(148, first.Summary!.Counts.Values.Sum());
-        Assert.True(first.Summary.Counts[RowClassification.New] > 100);
+        var ingested = first.Summary.Counts[RowClassification.New] + first.Summary.Counts[RowClassification.Unchanged];
+        Assert.True(ingested > 100);
         Assert.Equal(0, first.Summary.Counts[RowClassification.Conflict]);
 
         var again = await ApproveAndImport(await ReadyForReview("MA_2011_042.layout.json"));
         Assert.Equal(0, again.Summary!.Counts[RowClassification.New]);
-        Assert.Equal(first.Summary.Counts[RowClassification.New], again.Summary.Counts[RowClassification.Unchanged]);
+        Assert.Equal(ingested, again.Summary.Counts[RowClassification.Unchanged]);
     }
 
     [Fact]
@@ -162,6 +164,58 @@ public class PdfExtractionTests
         var second = await _dana.PostAsync($"/api/pdf-extractions/{id}/reject", null);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
         Assert.Contains("rejected by omer", (await second.Content.ReadFromJsonAsync<ProblemDetails>())!.Detail);
+    }
+
+    private async Task<PdfExtractionDetailsDto> Edit(long id, string code, string ballot)
+    {
+        var response = await _dana.PutAsJsonAsync($"/api/pdf-extractions/{id}/rows/{code}", new EditBallotRequest(ballot));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<PdfExtractionDetailsDto>(ApiFactory.Json))!;
+    }
+
+    // PDF-04: the analyst fixes what the scan couldn't say, then approval is allowed
+    [Fact]
+    public async Task Editing_the_unreadable_ballots_unblocks_approval_and_keeps_a_note()
+    {
+        var id = await ReadyForReview("MA_2009_117.layout.json");   // HUN, IND, SEN, TUN have two ticks
+        await Edit(id, "HUN", "Y");
+        await Edit(id, "IND", "n");
+        Assert.Equal(new[] { "ballot of TUN" }, (await Edit(id, "SEN", "A")).BlockingProblems);   // one left
+        var details = await Edit(id, "TUN", "N");
+
+        Assert.Empty(details.BlockingProblems);
+        var hun = details.Sheet!.Rows.Single(r => r.Code == "HUN");
+        Assert.Equal(("Y", "Edited by dana: unreadable → Y"), (hun.Ballot, Assert.Single(hun.Issues)));
+        Assert.Equal(ImportStatus.Completed, (await ApproveAndImport(id)).Import.Status);
+    }
+
+    // PDF-05: a corrected sheet (like the corrigendum) that differs from approved data opens a conflict, never overwrites
+    [Fact]
+    public async Task A_different_ballot_from_a_later_sheet_opens_a_conflict()
+    {
+        var first = await ReadyForReview("MA_2011_042.layout.json");
+        var firstImport = await ApproveAndImport(first);
+        var afg = firstImport.Summary!.Counts[RowClassification.New] > 0;   // AFG N was ingested (or already approved by another test)
+        Assert.True(afg || firstImport.Summary.Counts[RowClassification.Unchanged] > 0);
+
+        var corrected = await ReadyForReview("MA_2011_042.layout.json");
+        var edited = await Edit(corrected, "AFG", "Y");
+        Assert.Contains(edited.Sheet!.Issues, i => i.Contains("differ from the printed totals"));   // checks ran again
+
+        var second = await ApproveAndImport(corrected);
+        Assert.Equal(1, second.Summary!.Counts[RowClassification.Conflict]);
+        var conflicts = (await _dana.GetFromJsonAsync<List<Meridian.Api.Conflicts.ConflictDto>>("/api/conflicts?vote=MA%2F2011%2F042", ApiFactory.Json))!;
+        var conflict = Assert.Single(conflicts, c => c.CountryCode == "AFG");
+        Assert.Equal(("N", "Y", "MA_2011_042.pdf"), (conflict.ApprovedValue, conflict.ProposedValue, conflict.ProposedSource.FileName));
+    }
+
+    [Fact]
+    public async Task Invalid_edited_ballot_is_400_on_the_field()
+    {
+        var id = await ReadyForReview("MA_2011_042.layout.json");
+        var response = await _dana.PutAsJsonAsync($"/api/pdf-extractions/{id}/rows/AFG", new EditBallotRequest("Yes"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("ballot", (await response.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors.Keys);
     }
 
     [Fact]
