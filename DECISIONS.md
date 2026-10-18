@@ -1,46 +1,70 @@
 # Decisions
 
-> Work in progress: this file is completed in step 12. Until then the full decision log is the draft section of `CLAUDE.md`.
+## 1. Ingestion: report, don't guess
 
-## Azure
+- **Order of checks:** each row is validated alone (ING-04) before consistency checks (ING-05) across valid rows, so
+  one broken row (a comma in a title shifting the columns) can't make a whole vote look inconsistent.
+- **Minimal, visible normalization (ING-13):** trim, uppercase codes (`deu` → `DEU`), strip a byte-order mark (an
+  invisible marker at the start of some files), each shown in the report. `Yes`, `0`, `21/02/2024` are **rejected, not
+  guessed**: a wrong guess is worse than a rejected row that the next file can bring correctly.
+- **Two titles for one vote in one file:** all its rows there are Contradiction (compared exactly: a double space counts).
+- **Re-uploads change nothing (ING-12):** a partial unique index (unique only among `Pending` conflicts) stops a second
+  open conflict for the same proposal.
+- **A proposal already rejected** (same country, field, value) is reported as Conflict, linked to that decision ("already
+  rejected on <date> by <user>"); no new conflict opens, so a human's decision isn't reopened by a file.
+- **One import at a time**, queued in a database table (progress survives a restart); a second file waits.
 
-Everything Azure is optional and off by default: with an empty `.env`, `docker compose up` runs fully locally
-(files on a docker volume, logs on the console). Azure is switched on by configuration only; no keys or connection
-strings in code or git.
+## 2. Concurrency
 
-**Verified against the assignment's Azure resources (resource group `dotnetcandidate1-rg`):**
+- **Conflict decisions (CON-05):** `UPDATE … WHERE id = @id AND status = 'Pending'`, in one transaction with the data
+  change and the audit row. The database locks the row, so a simultaneous second decision waits, then updates 0 rows
+  and gets **409** with who decided, when, and the current value.
+- **Positions:** the version is PostgreSQL's `xmin` (a hidden column that changes on every update); stale version → 409.
 
-- **Application Insights (`dotnetcandidate1-appi`).** A request made from the UI was found in the portal by its
-  correlation id in `customDimensions.CorrelationId`, on the `requests` row and on the `traces` row, with the
-  PostgreSQL calls as `dependencies` under the same `operation_Id`. The first attempt failed: the id lived only in the
-  log scope, which the exporter did not send. It is now attached explicitly (a tag on the request's Activity, and a
-  parameter of the request and import log lines), so UI → API → background import can be followed in one query.
-- **Blob Storage (`dotnetcandidate1st`).** Account keys are blocked in this environment (`AuthorizationFailed`); access
-  is through Entra ID (my account has *Storage Blob Data Contributor*). A one-time opt-in test (`AzureBlobLiveTests`)
-  used the production `AzureBlobFileStore` with the account URL and `DefaultAzureCredential` (signed in with
-  `az login`): it uploaded `assembly_export_2024_q1_rev2.csv` (644,386 bytes) to container `imports`, read it back
-  byte for byte, and the stored SHA-256 matched. On a laptop the test excludes Managed Identity from the credential
-  chain, because its failed probe stops the chain before it reaches the `az login` credential.
+## 3. Scoring
 
-**Verified only against Azurite (the Azure Storage emulator), and why:** the full API path in Blob mode (upload →
-blob → the import worker reads it back) runs in `BlobStorageTests` against Azurite in Testcontainers, using a
-connection string. Running the whole API against the real account would need an Entra ID sign-in inside the docker
-container, which a laptop setup doesn't have, so `docker compose` stays on local storage.
+On each vote where a country voted **Y or N**, the weight is added to *counted*, and to *matched* if the ballot agrees
+with the stance (Y on For, N on Against). `score = round(100 × matched / counted, 2)`.
+- **A and X count nothing** (shown as counts). **No Y/N at all → N/A, unranked**: 0 would mean total disagreement.
+  Ties share a rank (90, 75, 75 → 1, 2, 2).
+- **POS-04:** a vote without a position blocks creation; the creator may exclude such votes explicitly, and the
+  exclusion is stored in the snapshot's rules.
 
-**In production:** the API runs in Azure with a **Managed Identity** that has *Storage Blob Data Contributor* on the
-account. Configuration is only `Storage:AzureBlob:AccountUrl`; `DefaultAzureCredential` picks the Managed Identity,
-so there is no storage key anywhere. The remaining secret (the Application Insights connection string) would come from
-Key Vault via app settings references.
+## 4. Database and history
 
-**Available for the bonus:** Document Intelligence (`dotnetcandidate1-di`), layout model: tables and selection marks
-with a confidence per cell, which is what the PDF voting sheets need. Not used yet.
+**Current state + append-only log.** `country_votes` holds only the approved ballot and its source file;
+`audit_events` records each change (who, when, old, new, file) in the **same transaction**, so no change exists without
+its record. Database triggers reject UPDATE/DELETE on the log and on snapshot results. `import_rows` keeps every line of
+every file with its class and reason. History answers: *why BRA's ballot changed* → the vote's timeline filtered to BRA;
+*a file from a month ago* → its report and rows; *who changed a weight* → `PositionSet` events with old/new; *what a
+snapshot used* → `snapshot_inputs`, a **frozen copy** of every ballot, stance and weight (SNP-04).
 
-**Not used, and why:**
-- **Azure OpenAI / Claude for PDF extraction:** non-deterministic output and no per-cell confidence; Document
-  Intelligence returns structured cells with confidence that can be validated and flagged.
-- **Azure Database for PostgreSQL:** reviewers must be able to run everything with `docker compose up`, without the
-  assignment's Azure window; the connection string is configuration, so moving is a deployment change, not a code change.
-- **Cosmos DB:** the data is relational, with foreign keys, partial unique indexes and multi-table transactions
-  (conflict decisions, snapshots).
-- **Key Vault:** local development would still need a credential to reach it; in production it belongs together with
-  Managed Identity.
+`snapshot_inputs` has **no foreign keys**, on purpose: PostgreSQL's query timing report showed the full-history snapshot
+spent 120 of its 128 seconds checking them row by row. The rows are copied from tables already checked and can never
+change, so the keys protected nothing. Now 14.5 s.
+
+## 5. Azure
+
+Off by default; switched on by `.env` only.
+- **Blob Storage** (file storage) behind the same interface as local disk. Keys are blocked on the account, so access is
+  by **Entra ID** (Azure sign-in: `az login` on a laptop, the app's own Managed Identity in Azure). Verified once on the
+  real account; automated tests use Azurite, a local emulator.
+- **Application Insights** (hosted logs): a UI request was found in the portal by its correlation id.
+- **Not used:** Azure OpenAI for PDFs (non-deterministic, no per-cell confidence), Azure PostgreSQL (reviewers run
+  everything locally), Cosmos DB (relational data), Key Vault (secret store; comes with Managed Identity).
+
+## 6. Bonus: PDF extraction: not built
+
+## 7. Before production
+
+**Import speed** (~5 min vs a 3-min target): an unlogged staging table (no crash log, faster writes). **Keyset
+pagination** ("rows after line N"): `OFFSET` reads every skipped row, so page 5,000 takes 2.7 s. Real sign-in instead
+of `X-User-Id`; a worker lease (a claim that expires) for several API instances.
+
+## 8. Next phase with 4 developers
+
+By feature, each owning a slice from database to UI: (1) ingestion speed; (2) PDF extraction up to Review;
+(3) snapshots and reporting; (4) platform: auth, CI/CD, Azure deployment, end-to-end tests.
+**Standards first:** one error format (ProblemDetails, the HTTP standard); the API client always generated (CI fails if
+stale); every write with its audit row in one transaction; every rule tested, endpoints on real PostgreSQL; correlation
+id in every log line.

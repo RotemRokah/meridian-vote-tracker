@@ -9,7 +9,7 @@ Full spec (Hebrew): `data/README-Home-Assignment-dot-net.pdf`; example screens: 
 - I come from Python/QA automation and I'm new to ASP.NET Core and Angular. I will be asked in an interview to **explain and change any line**. So: keep it simple, no clever abstractions, explain each non-obvious choice in 2–3 lines when you finish a step.
 - Code comments: short and human ("skip rows already approved"), not tutorial prose.
 - **Work one plan step at a time.** Before coding a step: show a short plan and wait for my OK. At the end of a step: run the tests, summarize what was built and which requirement IDs it covers, then commit.
-- If a requirement is ambiguous, don't silently pick: propose a decision, and once I agree, add it to `DECISIONS.md` (draft section at the bottom of this file until that file exists).
+- If a requirement is ambiguous, don't silently pick: propose a decision, and once I agree, add it to the decisions log at the bottom of this file (and to `DECISIONS.md` if it matters at that level).
 - Prefer the spec's wording over your instincts. "Partial with clear reasoning beats complete and shallow."
 
 ## Hard rules
@@ -220,7 +220,9 @@ Immutability: DB trigger rejects UPDATE/DELETE on `snapshot_inputs`, `snapshot_s
 
 ---
 
-## Decisions (draft; move to DECISIONS.md)
+## Decisions (full log)
+
+The submitted summary is `DECISIONS.md` (step 12, ≤2 pages). This section stays as the full log behind it; new decisions go here first, then into `DECISIONS.md` if they matter at that level.
 
 - **Normalization (ING-13):** trim whitespace; uppercase country codes (`deu`→`DEU`), flagged in the report as "normalized". Ballot variants (`Yes`, `YES`, `0`, `?`) and non-ISO dates are **rejected, not guessed**. Critical data: rejecting is safer than guessing.
 - **Vote details inconsistent inside a file:** all valid rows of that vote in that file are Contradiction; vote not ingested from this file. Can't know which title is right.
