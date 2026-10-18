@@ -141,8 +141,7 @@ public static class VotingSheetReader
         else
         {
             var t = sheet.PrintedTotals;
-            var counted = new SheetTotals(rows.Count(r => r.Ballot == "Y"), rows.Count(r => r.Ballot == "N"),
-                rows.Count(r => r.Ballot == "A"), rows.Count(r => r.Ballot == "X"));
+            var counted = Counted(sheet with { Rows = rows });
             if (counted != t)
                 issues.Add($"Extracted counts Yes {counted.Yes}, No {counted.No}, Abstentions {counted.Abstain}, Not voting {counted.NotVoting} "
                          + $"differ from the printed totals Yes {t.Yes}, No {t.No}, Abstentions {t.Abstain}, Not voting {t.NotVoting}");
@@ -150,6 +149,9 @@ public static class VotingSheetReader
 
         return sheet with { Rows = rows, Issues = issues };
     }
+
+    private static SheetTotals Counted(VotingSheet sheet) => new(sheet.Rows.Count(r => r.Ballot == "Y"),
+        sheet.Rows.Count(r => r.Ballot == "N"), sheet.Rows.Count(r => r.Ballot == "A"), sheet.Rows.Count(r => r.Ballot == "X"));
 
     // Notes from reading the scan or from a person's edit; everything else is recomputed by Validate
     private static bool IsReadNote(string issue) =>
@@ -164,6 +166,8 @@ public static class VotingSheetReader
         if (IsoDate(sheet.VoteDate) == null) problems.Add("date");
         if (string.IsNullOrWhiteSpace(sheet.Title)) problems.Add("title");
         problems.AddRange(sheet.Rows.Where(r => r.Ballot == null).Select(r => $"ballot of {r.Code}"));
+        // rows may be missing or misread: the analyst fixes the ballots so the counts match, or rejects the sheet
+        if (sheet.PrintedTotals != null && Counted(sheet) != sheet.PrintedTotals) problems.Add("counts differ from the printed totals");
         return problems;
     }
 }

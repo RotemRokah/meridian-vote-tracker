@@ -82,6 +82,16 @@ public class VotingSheetTests
         var checkedSheet = VotingSheetReader.Validate(oneChanged, MembersOf(sheet));
 
         Assert.Contains(checkedSheet.Issues, i => i.Contains("differ from the printed totals"));
+        Assert.Contains("counts differ from the printed totals", VotingSheetReader.BlockingProblems(checkedSheet));   // can't be approved
+    }
+
+    [Fact]
+    public void Missing_rows_block_approval_through_the_totals()
+    {
+        var sheet = VotingSheetReader.Read(Fixture("MA_2011_042.layout.json"));
+        var rowsLost = sheet with { Rows = sheet.Rows.Take(109).ToList() };   // e.g. a table that couldn't be read
+        Assert.Contains("counts differ from the printed totals",
+            VotingSheetReader.BlockingProblems(VotingSheetReader.Validate(rowsLost, MembersOf(sheet))));
     }
 
     [Fact]

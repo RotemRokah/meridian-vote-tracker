@@ -201,9 +201,11 @@ public class PdfExtractionTests
         var corrected = await ReadyForReview("MA_2011_042.layout.json");
         var edited = await Edit(corrected, "AFG", "Y");
         Assert.Contains(edited.Sheet!.Issues, i => i.Contains("differ from the printed totals"));   // checks ran again
+        Assert.Contains("counts differ from the printed totals", edited.BlockingProblems);           // so approval is blocked
+        Assert.Empty((await Edit(corrected, "ALB", "N")).BlockingProblems);                         // Y -> N: counts match again
 
         var second = await ApproveAndImport(corrected);
-        Assert.Equal(1, second.Summary!.Counts[RowClassification.Conflict]);
+        Assert.Equal(2, second.Summary!.Counts[RowClassification.Conflict]);
         var conflicts = (await _dana.GetFromJsonAsync<List<Meridian.Api.Conflicts.ConflictDto>>("/api/conflicts?vote=MA%2F2011%2F042", ApiFactory.Json))!;
         var conflict = Assert.Single(conflicts, c => c.CountryCode == "AFG");
         Assert.Equal(("N", "Y", "MA_2011_042.pdf"), (conflict.ApprovedValue, conflict.ProposedValue, conflict.ProposedSource.FileName));
