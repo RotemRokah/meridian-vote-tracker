@@ -38,10 +38,85 @@ public static class PdfEndpoints
             .Produces<PdfExtractionDetailsDto>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        pdfs.MapPost("/{id:long}/approve", Approve).WithName("ApprovePdfExtraction")
+            .Produces<PdfExtractionDto>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        pdfs.MapPost("/{id:long}/reject", Reject).WithName("RejectPdfExtraction")
+            .Produces<PdfExtractionDto>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         pdfs.MapPost("/{id:long}/retry", Retry).WithName("RetryPdfExtraction")
             .Produces<PdfExtractionDto>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
+    }
+
+    // PDF-05: an approved sheet becomes a normal import (CSV built from the reviewed rows, named after the PDF),
+    // so it goes through the same ingestion rules: New / Unchanged / Conflict, never overwriting approved data.
+    private static async Task<IResult> Approve(long id, MeridianDbContext db, IFileStore files,
+        ClaimsPrincipal user, HttpContext http, CancellationToken ct)
+    {
+        var x = await db.PdfExtractions.SingleOrDefaultAsync(e => e.Id == id, ct);
+        if (x == null) return NotFound(id);
+        if (x.Status != PdfExtractionStatus.ReadyForReview) return NotReviewable(x);
+        var sheet = SheetOf(x)!;
+        var blocking = VotingSheetReader.BlockingProblems(sheet);
+        if (blocking.Count > 0)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+                { ["sheet"] = new[] { "Fix before approving: " + string.Join(", ", blocking) } });
+
+        StoredFile stored;
+        using (var csv = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(ToCsv(sheet))))
+            stored = await files.SaveAsync(csv, ct);
+
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var import = new Import
+        {
+            FileName = x.FileName, FileSha256 = stored.Sha256, StoragePath = stored.StoragePath,
+            UploadedBy = userId, UploadedAt = DateTime.UtcNow, Status = ImportStatus.Queued, CorrelationId = http.TraceIdentifier,
+        };
+        db.Imports.Add(import);
+        await db.SaveChangesAsync(ct);
+
+        // only one decision lands, even if two analysts click at once (same idea as CON-05)
+        var claimed = await db.PdfExtractions.Where(e => e.Id == id && e.Status == PdfExtractionStatus.ReadyForReview)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Status, PdfExtractionStatus.Approved)
+                .SetProperty(e => e.DecidedBy, userId).SetProperty(e => e.DecidedAt, DateTime.UtcNow)
+                .SetProperty(e => e.ImportId, import.Id), ct);
+        if (claimed == 0) return NotReviewable(await db.PdfExtractions.AsNoTracking().SingleAsync(e => e.Id == id, ct));
+        await tx.CommitAsync(ct);
+        return Results.Ok(ToDto(await db.PdfExtractions.AsNoTracking().SingleAsync(e => e.Id == id, ct)));
+    }
+
+    private static async Task<IResult> Reject(long id, MeridianDbContext db, ClaimsPrincipal user, CancellationToken ct)
+    {
+        var claimed = await db.PdfExtractions.Where(e => e.Id == id && e.Status == PdfExtractionStatus.ReadyForReview)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Status, PdfExtractionStatus.Rejected)
+                .SetProperty(e => e.DecidedBy, user.FindFirstValue(ClaimTypes.NameIdentifier))
+                .SetProperty(e => e.DecidedAt, DateTime.UtcNow), ct);
+        var x = await db.PdfExtractions.AsNoTracking().SingleOrDefaultAsync(e => e.Id == id, ct);
+        if (x == null) return NotFound(id);
+        return claimed == 0 ? NotReviewable(x) : Results.Ok(ToDto(x));
+    }
+
+    private static IResult NotReviewable(PdfExtraction x) =>
+        Results.Problem(statusCode: 409, title: "Extraction is not waiting for review",
+            detail: x.DecidedBy == null ? $"Extraction {x.Id} is {x.Status}." : $"Extraction {x.Id} was {x.Status.ToString().ToLowerInvariant()} by {x.DecidedBy} at {x.DecidedAt:yyyy-MM-dd HH:mm:ss} UTC.",
+            extensions: new Dictionary<string, object?> { ["current"] = ToDto(x) });
+
+    internal static string ToCsv(VotingSheet sheet)
+    {
+        static string Q(string? v) => "\"" + (v ?? "").Replace("\"", "\"\"") + "\"";
+        var lines = new List<string> { string.Join(",", Meridian.Domain.Ingestion.CsvFormat.Columns) };
+        var date = VotingSheetReader.IsoDate(sheet.VoteDate);
+        foreach (var r in sheet.Rows)
+            lines.Add(string.Join(",", Q(sheet.AssemblyVoteId), sheet.Session, date, Q(sheet.Title), Q(r.Code), Q(r.Name), r.Ballot, ""));
+        return string.Join("\n", lines) + "\n";
     }
 
     // PDF-01: store the file, queue it, 202 right away

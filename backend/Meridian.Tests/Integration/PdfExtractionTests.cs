@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
+using Meridian.Api.Imports;
 using Meridian.Api.Pdf;
 using Meridian.Domain;
 using Microsoft.AspNetCore.Hosting;
@@ -113,6 +114,54 @@ public class PdfExtractionTests
 
         // only a failed one can be retried
         Assert.Equal(HttpStatusCode.Conflict, (await _dana.PostAsync($"/api/pdf-extractions/{queued.Id}/retry", null)).StatusCode);
+    }
+
+    private async Task<long> ReadyForReview(string layout)
+    {
+        _factory.Analyzer.Answers.Enqueue(() => Layout(layout));
+        var queued = (await (await Upload(_dana, FakePdf)).Content.ReadFromJsonAsync<PdfExtractionDto>(ApiFactory.Json))!;
+        Assert.Equal(PdfExtractionStatus.ReadyForReview, (await WaitWhileBusy(_dana, queued.Id)).Extraction.Status);
+        return queued.Id;
+    }
+
+    private async Task<ImportDetailsDto> ApproveAndImport(long id)
+    {
+        var response = await _dana.PostAsync($"/api/pdf-extractions/{id}/approve", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var approved = (await response.Content.ReadFromJsonAsync<PdfExtractionDto>(ApiFactory.Json))!;
+        Assert.Equal((PdfExtractionStatus.Approved, "dana"), (approved.Status, approved.DecidedBy));
+        return await ApiFactory.WaitForImport(_dana, approved.ImportId!.Value);
+    }
+
+    // PDF-05: approval goes through the CSV ingestion rules, with the PDF as the source file
+    [Fact]
+    public async Task Approved_sheet_is_ingested_like_a_csv_and_a_second_copy_changes_nothing()
+    {
+        var first = await ApproveAndImport(await ReadyForReview("MA_2011_042.layout.json"));
+        Assert.Equal((ImportStatus.Completed, "MA_2011_042.pdf"), (first.Import.Status, first.Import.FileName));
+        Assert.Equal(148, first.Summary!.Counts.Values.Sum());
+        Assert.True(first.Summary.Counts[RowClassification.New] > 100);
+        Assert.Equal(0, first.Summary.Counts[RowClassification.Conflict]);
+
+        var again = await ApproveAndImport(await ReadyForReview("MA_2011_042.layout.json"));
+        Assert.Equal(0, again.Summary!.Counts[RowClassification.New]);
+        Assert.Equal(first.Summary.Counts[RowClassification.New], again.Summary.Counts[RowClassification.Unchanged]);
+    }
+
+    [Fact]
+    public async Task Sheet_with_an_unreadable_ballot_cannot_be_approved_and_can_be_rejected()
+    {
+        var id = await ReadyForReview("MA_2009_117.layout.json");   // HUN and IND have two ticks
+
+        var refused = await _dana.PostAsync($"/api/pdf-extractions/{id}/approve", null);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var problem = (await refused.Content.ReadFromJsonAsync<ValidationProblemDetails>())!;
+        Assert.Contains("ballot of HUN", problem.Errors["sheet"][0]);
+
+        Assert.Equal(HttpStatusCode.OK, (await _factory.ClientFor("omer").PostAsync($"/api/pdf-extractions/{id}/reject", null)).StatusCode);
+        var second = await _dana.PostAsync($"/api/pdf-extractions/{id}/reject", null);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Contains("rejected by omer", (await second.Content.ReadFromJsonAsync<ProblemDetails>())!.Detail);
     }
 
     [Fact]
