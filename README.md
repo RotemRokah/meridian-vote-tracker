@@ -144,6 +144,7 @@ Everything runs locally by default. To use Azure, put these in `.env` (never in 
 |---|---|
 | `STORAGE_PROVIDER=AzureBlob` + `AZURE_STORAGE_ACCOUNT_URL` | Uploaded files go to Azure Blob Storage (container `imports`) through Entra ID (`DefaultAzureCredential`: Managed Identity in Azure, `az login` on a developer machine), with no key. Needs the *Storage Blob Data Contributor* role. |
 | `STORAGE_PROVIDER=AzureBlob` + `AZURE_STORAGE_CONNECTION_STRING` | Same, with an account key (Azurite, or accounts that allow keys). A missing or wrong setting stops the API at startup with a clear message. |
+| `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` + `AZURE_DOCUMENT_INTELLIGENCE_KEY` | Turns on the bonus PDF extraction (Review > PDF extractions): a scanned voting sheet is read by Document Intelligence, checked, reviewed and approved into the normal import. Without them the tab says the feature is off. |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Logs, HTTP requests and PostgreSQL calls go to Application Insights, each with `CorrelationId` as a field, so one upload can be followed from the browser request to the background import. |
 
 Inside docker on a laptop there is no Entra ID sign-in, so keep `STORAGE_PROVIDER=Local` there. To check a real

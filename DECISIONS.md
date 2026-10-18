@@ -12,7 +12,7 @@
   open conflict for the same proposal.
 - **A proposal already rejected** (same country, field, value) is reported as Conflict, linked to that decision ("already
   rejected on <date> by <user>"); no new conflict opens, so a human's decision isn't reopened by a file.
-- **One import at a time**, queued in a database table (progress survives a restart); a second file waits.
+- **One import at a time**, queued in a database table (survives a restart); a second file waits.
 
 ## 2. Concurrency
 
@@ -23,7 +23,7 @@
 
 ## 3. Scoring
 
-On each vote where a country voted **Y or N**, the weight is added to *counted*, and to *matched* if the ballot agrees
+Where a country voted **Y or N**, the weight is added to *counted*, and to *matched* if the ballot agrees
 with the stance (Y on For, N on Against). `score = round(100 × matched / counted, 2)`.
 - **A and X count nothing** (shown as counts). **No Y/N at all → N/A, unranked**: 0 would mean total disagreement.
   Ties share a rank (90, 75, 75 → 1, 2, 2).
@@ -55,11 +55,12 @@ Off by default; switched on by `.env` only.
 
 ## 6. Bonus: PDF extraction
 
-**Document Intelligence (layout), not a language model (PDF-02):** it returns table cells and checkboxes with a
-confidence each; a language model can invent a ballot silently. A probe showed **unticked boxes always
-get confidence 0.10**, so confidence only means something for a ticked box. Flagged for review: 0 or 2+ ticks in a row,
-a tick under 0.8, an unknown or repeated code, counts that differ from the printed totals. **Quality:** hand-label the
-six sheets; measure wrong ballots, how many were flagged, and wrong ones *not* flagged (the dangerous one).
+**Document Intelligence (layout), not a language model (PDF-02):** cells and checkboxes come with a confidence each; a
+language model can invent a ballot silently. **Unticked boxes always get confidence 0.10**, so only a ticked box's
+confidence counts. Flagged: 0 or 2+ ticks, a tick under 0.8, bad or repeated codes, totals mismatch.
+**Built:** upload, background read (2-min timeout, retry), these checks, ballot edit, approve (a normal import named
+after the PDF, same rules as CSV), reject. Not built: editing codes or header. **Quality:** hand-label the six sheets;
+count wrong ballots, and wrong ones *not* flagged.
 
 ## 7. Before production
 
@@ -71,6 +72,6 @@ a required comment and an audit event (only a person, on record).
 
 By feature, each owning a slice from database to UI: (1) ingestion speed; (2) PDF extraction up to Review;
 (3) snapshots and reporting; (4) platform: auth, CI/CD, Azure deployment, end-to-end tests.
-**Standards first:** one error format (ProblemDetails, the HTTP standard); the API client always generated (CI fails if
-stale); every write with its audit row in one transaction; every rule tested, endpoints on real PostgreSQL; correlation
-id in every log line.
+**Standards first:** one error format (ProblemDetails, the HTTP standard); a generated API client (CI fails if stale);
+every write with its audit row in one transaction; every rule tested, endpoints on real PostgreSQL; correlation id in
+every log line.
