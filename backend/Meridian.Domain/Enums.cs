@@ -26,3 +26,6 @@ public enum Ballot { Y, N, A, X }
 
 // Vote-level outcome of one import (ING-14 "what happened per vote")
 public enum VoteDetailsOutcome { Created, Unchanged, Conflict, Contradiction, NotCreated }
+
+// A scanned PDF: queued -> read by Document Intelligence -> reviewed by a person (PDF-01, PDF-04)
+public enum PdfExtractionStatus { Queued, Running, ReadyForReview, Failed, Approved, Rejected }

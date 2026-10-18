@@ -174,3 +174,24 @@ public class SnapshotScore
     public int AbstainCount { get; set; }
     public int AbsentCount { get; set; }
 }
+
+// One uploaded PDF voting sheet and what was read from it. Nothing here is approved data:
+// approving it creates a normal import that goes through the CSV ingestion rules (PDF-05).
+public class PdfExtraction
+{
+    public long Id { get; set; }
+    public string FileName { get; set; } = "";
+    public string FileSha256 { get; set; } = "";
+    public string StoragePath { get; set; } = "";
+    public string UploadedBy { get; set; } = "";
+    public DateTime UploadedAt { get; set; }
+    public PdfExtractionStatus Status { get; set; }
+    public int Attempts { get; set; }
+    public string? Error { get; set; }             // AI failure shown to the user (PDF-06)
+    public string? Sheet { get; set; }             // jsonb: VotingSheet with every issue found (PDF-03)
+    public string? CorrelationId { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public long? ImportId { get; set; }            // the import created on approval
+}

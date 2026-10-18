@@ -447,6 +447,98 @@ namespace Meridian.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Meridian.Api.Data.PdfExtraction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("text")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecidedBy")
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text")
+                        .HasColumnName("error");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("FileSha256")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("file_sha256");
+
+                    b.Property<long?>("ImportId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("import_id");
+
+                    b.Property<string>("Sheet")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sheet");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("storage_path");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<string>("UploadedBy")
+                        .IsRequired()
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("uploaded_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pdf_extractions");
+
+                    b.HasIndex("DecidedBy")
+                        .HasDatabaseName("ix_pdf_extractions_decided_by");
+
+                    b.HasIndex("ImportId")
+                        .HasDatabaseName("ix_pdf_extractions_import_id");
+
+                    b.HasIndex("UploadedBy")
+                        .HasDatabaseName("ix_pdf_extractions_uploaded_by");
+
+                    b.HasIndex("Status", "UploadedAt")
+                        .HasDatabaseName("ix_pdf_extractions_status_uploaded_at");
+
+                    b.ToTable("pdf_extractions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_pdf_extractions_status", "status IN ('Queued','Running','ReadyForReview','Failed','Approved','Rejected')");
+                        });
+                });
+
             modelBuilder.Entity("Meridian.Api.Data.Snapshot", b =>
                 {
                     b.Property<long>("Id")
@@ -856,6 +948,28 @@ namespace Meridian.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_import_rows_imports_import_id");
+                });
+
+            modelBuilder.Entity("Meridian.Api.Data.PdfExtraction", b =>
+                {
+                    b.HasOne("Meridian.Api.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_pdf_extractions_users_decided_by");
+
+                    b.HasOne("Meridian.Api.Data.Import", null)
+                        .WithMany()
+                        .HasForeignKey("ImportId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_pdf_extractions_imports_import_id");
+
+                    b.HasOne("Meridian.Api.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_pdf_extractions_users_uploaded_by");
                 });
 
             modelBuilder.Entity("Meridian.Api.Data.Snapshot", b =>

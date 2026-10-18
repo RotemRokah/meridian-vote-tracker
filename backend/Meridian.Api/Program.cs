@@ -1,3 +1,4 @@
+using Meridian.Api.Pdf;
 using Meridian.Api.Auth;
 using Meridian.Api.Conflicts;
 using Meridian.Api.Data;
@@ -53,6 +54,10 @@ builder.Services.AddHostedService<ImportWorker>();
 // Snapshots: computed in the background (SNP-02)
 builder.Services.AddScoped<SnapshotCalculator>();
 builder.Services.AddHostedService<SnapshotWorker>();
+
+// PDF voting sheets (bonus): Document Intelligence when configured, otherwise the feature is off
+builder.Services.AddHttpClient<IDocumentAnalyzer, AzureDocumentAnalyzer>();
+builder.Services.AddHostedService<PdfExtractionWorker>();
 builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = ImportEndpoints.MaxUploadBytes);
 builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = ImportEndpoints.MaxUploadBytes);
 
@@ -127,6 +132,7 @@ api.MapImportEndpoints();
 api.MapConflictEndpoints();
 api.MapVoteEndpoints();
 api.MapSnapshotEndpoints();
+api.MapPdfEndpoints();
 
 app.Run();
 

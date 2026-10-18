@@ -20,6 +20,7 @@ public class MeridianDbContext : DbContext
     public DbSet<Snapshot> Snapshots => Set<Snapshot>();
     public DbSet<SnapshotInput> SnapshotInputs => Set<SnapshotInput>();
     public DbSet<SnapshotScore> SnapshotScores => Set<SnapshotScore>();
+    public DbSet<PdfExtraction> PdfExtractions => Set<PdfExtraction>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -160,7 +161,18 @@ public class MeridianDbContext : DbContext
             e.HasOne<Snapshot>().WithMany().HasForeignKey(x => x.SnapshotId).OnDelete(DeleteBehavior.Restrict);
             e.ToTable(t => t.HasCheckConstraint("ck_snapshot_scores_score", "score IS NULL OR score BETWEEN 0 AND 100"));
         });
+        ConfigurePdf(b);
     }
+
+    private static void ConfigurePdf(ModelBuilder b) => b.Entity<PdfExtraction>(e =>
+    {
+        e.HasOne<User>().WithMany().HasForeignKey(x => x.UploadedBy).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne<User>().WithMany().HasForeignKey(x => x.DecidedBy).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne<Import>().WithMany().HasForeignKey(x => x.ImportId).OnDelete(DeleteBehavior.Restrict);
+        EnumAsText(e, x => x.Status, "status");
+        e.Property(x => x.Sheet).HasColumnType("jsonb");
+        e.HasIndex(x => new { x.Status, x.UploadedAt });
+    });
 
     // Store an enum as its name (e.g. 'Pending') and only allow known names.
     private static void EnumAsText<TEntity, TEnum>(EntityTypeBuilder<TEntity> e,

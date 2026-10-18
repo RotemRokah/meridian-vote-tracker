@@ -32,6 +32,7 @@
   <!-- real assignment files (q1, rev2), so the import tests run on any machine -->
   <ItemGroup>
     <None Update="TestData\*.csv" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="TestData\pdf\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

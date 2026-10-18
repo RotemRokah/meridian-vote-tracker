@@ -29,6 +29,9 @@ services:
       Storage__AzureBlob__AccountUrl: ${AZURE_STORAGE_ACCOUNT_URL:-}
       Storage__AzureBlob__ConnectionString: ${AZURE_STORAGE_CONNECTION_STRING:-}
       APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      # PDF extraction (bonus): empty = feature off
+      DocumentIntelligence__Endpoint: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+      DocumentIntelligence__Key: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
       # workstation GC: much lower memory in a container than the server GC default
       DOTNET_gcServer: "0"
     ports:
