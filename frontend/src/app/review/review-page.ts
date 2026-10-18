@@ -5,6 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { MeridianApi, ConflictDto, ConflictStatus } from '../api/api-client';
 import { Problem, ProblemComponent, FieldErrorComponent, toProblem } from '../core/problem';
 import { SelectedUser } from '../core/selected-user';
+import { PdfExtractions } from './pdf-extractions';
 
 type Tab = 'Pending' | 'Decided' | 'Pdf';
 
@@ -12,14 +13,18 @@ type Tab = 'Pending' | 'Decided' | 'Pdf';
 // approve/reject (CON-04), a clear message when someone else decided first (CON-05), decided ones (CON-06)
 @Component({
   selector: 'app-review-page',
-  imports: [DatePipe, FormsModule, ProblemComponent, FieldErrorComponent],
+  imports: [DatePipe, FormsModule, ProblemComponent, FieldErrorComponent, PdfExtractions],
   template: `
     <h1>Review</h1>
     <div class="tabs">
       <button [class.active]="tab() === 'Pending'" (click)="show('Pending')">Pending conflicts</button>
       <button [class.active]="tab() === 'Decided'" (click)="show('Decided')">Decided</button>
-      <button disabled title="Bonus, not built">PDF extractions</button>
+      <button [class.active]="tab() === 'Pdf'" (click)="show('Pdf')">PDF extractions</button>
     </div>
+
+    @if (tab() === 'Pdf') {
+      <app-pdf-extractions />
+    } @else {
 
     <div class="row">
       <label>Vote
@@ -80,6 +85,7 @@ type Tab = 'Pending' | 'Decided' | 'Pdf';
     } @empty {
       <p class="muted">No {{ tab() === 'Pending' ? 'pending' : 'decided' }} conflicts{{ voteFilter ? ' for ' + voteFilter : '' }}.</p>
     }
+    }
   `,
 })
 export class ReviewPage {
@@ -100,7 +106,7 @@ export class ReviewPage {
 
   show(tab: Tab): void {
     this.tab.set(tab);
-    this.load();
+    if (tab !== 'Pdf') this.load();
   }
 
   load(): void {
